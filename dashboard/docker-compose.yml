@@ -1,0 +1,61 @@
+services:
+  dashboard:
+    build: .
+    image: frc-dashboard:latest
+    container_name: frc-dashboard
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - DB_PATH=/data/dash.db
+      - GITHUB_PAT=${GITHUB_PAT}
+      - SESSION_SECRET=${SESSION_SECRET}
+      - AUTH_USER=${AUTH_USER}
+      - AUTH_PASS=${AUTH_PASS}
+      - CENTRAL_BASE_URL=${CENTRAL_BASE_URL:-http://host.docker.internal}
+    volumes:
+      - dash-data:/data
+    ports:
+      - "127.0.0.1:3000:3000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3000/api/data/overview"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  jobs:
+    build: .
+    image: frc-dashboard:latest
+    container_name: frc-dashboard-jobs
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - DB_PATH=/data/dash.db
+      - GITHUB_PAT=${GITHUB_PAT}
+      - CENTRAL_BASE_URL=${CENTRAL_BASE_URL:-http://host.docker.internal}
+      - SYNC_GITHUB_INTERVAL_MS=${SYNC_GITHUB_INTERVAL_MS:-300000}
+      - SYNC_HEALTH_INTERVAL_MS=${SYNC_HEALTH_INTERVAL_MS:-60000}
+      - EVALUATE_ALERTS_INTERVAL_MS=${EVALUATE_ALERTS_INTERVAL_MS:-60000}
+    volumes:
+      - dash-data:/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: ["npx", "tsx", "jobs/runner.ts"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  migrate:
+    build: .
+    image: frc-dashboard:latest
+    container_name: frc-dashboard-migrate
+    environment:
+      - DB_PATH=/data/dash.db
+    volumes:
+      - dash-data:/data
+    command: ["npx", "tsx", "lib/migrate.ts"]
+    restart: "no"
+
+volumes:
+  dash-data:

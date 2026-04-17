@@ -1,0 +1,52 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body {
+  background-color: #0b0f17;
+  color: #e6edf7;
+  min-height: 100vh;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+@layer components {
+  .card {
+    @apply bg-bg-surface border border-border-subtle rounded-lg p-4;
+  }
+  .card-raised {
+    @apply bg-bg-raised border border-border-default rounded-lg p-4;
+  }
+  .pill {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium;
+  }
+  .pill-ok {
+    @apply bg-status-ok/10 text-status-ok border border-status-ok/30;
+  }
+  .pill-warn {
+    @apply bg-status-warn/10 text-status-warn border border-status-warn/30;
+  }
+  .pill-err {
+    @apply bg-status-err/10 text-status-err border border-status-err/30;
+  }
+  .pill-info {
+    @apply bg-status-info/10 text-status-info border border-status-info/30;
+  }
+  .pill-neutral {
+    @apply bg-status-neutral/10 text-status-neutral border border-status-neutral/30;
+  }
+  .nav-link {
+    @apply px-3 py-2 rounded-md text-sm text-text-secondary hover:text-text-primary hover:bg-bg-surface transition-colors;
+  }
+  .nav-link-active {
+    @apply text-text-primary bg-bg-surface;
+  }
+}
