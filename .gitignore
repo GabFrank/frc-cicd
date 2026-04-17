@@ -1,0 +1,17 @@
+# Sensitive data — never commit
+.env
+*.pem
+*.key
+*.pfx
+*.jks
+*.pepk
+
+# Claude Code local config (contains SSH passwords in permission rules)
+.claude/settings.local.json
+
+# frc-comercial (solo parte del workspace, cada componente tiene su propio repo)
+frc-comercial/
+
+# OS
+.DS_Store
+

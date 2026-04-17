@@ -1,0 +1,20 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../frc-comercial/filial"
+		},
+		{
+			"path": "../frc-comercial/central"
+		},
+		{
+			"path": "../frc-comercial/desktop"
+		},
+		{
+			"path": "../frc-comercial/mobile"
+		}
+	],
+	"settings": {}
+}
