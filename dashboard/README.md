@@ -21,7 +21,8 @@ Dashboard de monitoreo externo del SaaS **FRC Comercial** (Franco Systems ERP). 
 | `/dashboard/cicd` | Workflow runs, releases y PRs abiertos por repo |
 | `/dashboard/filiales` | Grid de filiales: versión actual, último intento, historial reciente |
 | `/dashboard/central` | Las 4 instancias del central: health, latencia, versión runtime (actuator/info), heap, uptime, threads, deployments recientes |
-| `/dashboard/replicacion` | Clusters PG localhost: estado, versión, DBs (tamaño + conexiones), slots por sucursal (C→F / F→C), publicaciones, subscripciones, `pg_stat_replication` |
+| `/dashboard/replicacion` | Por servidor monitoreado (central + filiales vía ZeroTier): estado PG, versión, tamaño DB, conexiones, latencia, y lista **expected vs found** de cada pub/sub/slot registrado en Admin |
+| `/dashboard/admin` | CRUD de servidores monitoreados + replicación esperada (pub/sub/slot por nombre exacto, no heurística) |
 | `/dashboard/alertas` | Alertas activas + recientemente resueltas |
 | `/tv` | Vista fullscreen rotatoria para monitor de oficina |
 | `/login` | Login con user/pass de `.env` |
@@ -61,7 +62,7 @@ curl -XPOST http://localhost:3000/api/sync/github   # trigger manual
 |---|---|---|
 | `sync-github` | 5 min | Pull de releases / workflow_runs / PRs / deployments de los 4 repos, upsert en SQLite |
 | `sync-health` | 1 min | `GET http://localhost:808{1..4}/actuator/health` a las instancias del central; si OK, enriquece con `/actuator/info` + `/actuator/metrics/*` (version, heap, uptime, threads) |
-| `sync-replication` | 2 min | Conecta a `PG_CLUSTERS` con `PG_USER`/`PG_PASSWORD` (localhost) y snapshotea `pg_replication_slots`, `pg_publication`, `pg_subscription`, `pg_stat_replication`, `pg_database_size`, `pg_stat_activity`, `empresarial.sucursal` |
+| `sync-replication` | 2 min | Itera **`monitored_servers`** (registrados en `/dashboard/admin`), conecta al PG endpoint declarado de cada uno (central por localhost, filiales vía ZeroTier), snapshotea `pg_replication_slots`, `pg_publication`, `pg_subscription`, `pg_stat_replication`, `pg_database_size`, `pg_stat_activity`, `empresarial.sucursal`, y compara contra `expected_replication` (pub/sub/slot por nombre exacto). Resultado por entrada: `ok` / `found · inactive` / `missing`. Usa `pg_user`/`pg_password` por servidor; cae a env `PG_USER`/`PG_PASSWORD` si están vacíos. |
 | `evaluate-alerts` | 1 min | Reglas: filial sin update >2h, filial con último deploy `failure`, rollback detectado, central DOWN 3 checks seguidos, cluster PG DOWN, slot de replicación inactivo |
 
 > **Los jobs NO corren dentro del proceso Next.** Viven en `jobs/runner.ts`, contenedor aparte que comparte volumen SQLite con el dashboard.

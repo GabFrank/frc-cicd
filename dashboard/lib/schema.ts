@@ -179,6 +179,47 @@ export const sucursales = sqliteTable("sucursales", {
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
 
+export const monitoredServers = sqliteTable("monitored_servers", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  kind: text("kind").notNull(),
+  empresa: text("empresa"),
+  nombre: text("nombre").notNull(),
+  ip: text("ip"),
+  appPort: integer("app_port"),
+  pgHost: text("pg_host"),
+  pgPort: integer("pg_port"),
+  pgDatabase: text("pg_database"),
+  pgUser: text("pg_user"),
+  pgPassword: text("pg_password"),
+  channel: text("channel"),
+  os: text("os"),
+  sucursalId: integer("sucursal_id"),
+  githubEnvironment: text("github_environment"),
+  active: integer("active", { mode: "boolean" }).notNull().default(true),
+  notes: text("notes"),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+});
+
+export const expectedReplication = sqliteTable("expected_replication", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  serverId: integer("server_id").notNull().references(() => monitoredServers.id, { onDelete: "cascade" }),
+  kind: text("kind").notNull(),
+  name: text("name").notNull(),
+  peerServerId: integer("peer_server_id").references(() => monitoredServers.id, { onDelete: "set null" }),
+  direction: text("direction"),
+  notes: text("notes"),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+});
+
+export const replicationCheckResults = sqliteTable("replication_check_results", {
+  expectedId: integer("expected_id").primaryKey().references(() => expectedReplication.id, { onDelete: "cascade" }),
+  status: text("status").notNull(),
+  active: integer("active", { mode: "boolean" }),
+  extraJson: text("extra_json"),
+  checkedAt: text("checked_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+});
+
 export type Component = typeof components.$inferSelect;
 export type Channel = typeof channels.$inferSelect;
 export type Instance = typeof instances.$inferSelect;

@@ -6,10 +6,62 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const clusters = db.select().from(schema.pgClusterStatus).all();
+  const servers = db.select().from(schema.monitoredServers).all();
+  const expected = db.select().from(schema.expectedReplication).all();
+  const checks = db.select().from(schema.replicationCheckResults).all();
   const databases = db.select().from(schema.pgDatabases).all();
-  const items = db.select().from(schema.pgReplicationItems).all();
+  const clusterStatus = db.select().from(schema.pgClusterStatus).all();
   const sucursalesRows = db.select().from(schema.sucursales).all();
+
+  const checkMap = new Map(checks.map((c) => [c.expectedId, c]));
+  const clusterByPort = new Map(clusterStatus.map((c) => [c.clusterPort, c]));
+
+  const data = servers.map((s) => {
+    const ownExpected = expected.filter((e) => e.serverId === s.id);
+    const ownDatabases = databases.filter((d) => d.clusterPort === (s.pgPort ?? 0) && d.name === s.pgDatabase);
+    const cluster = s.pgPort ? clusterByPort.get(s.pgPort) : null;
+
+    return {
+      id: s.id,
+      kind: s.kind,
+      empresa: s.empresa,
+      nombre: s.nombre,
+      ip: s.ip,
+      appPort: s.appPort,
+      pgHost: s.pgHost,
+      pgPort: s.pgPort,
+      pgDatabase: s.pgDatabase,
+      sucursalId: s.sucursalId,
+      channel: s.channel,
+      active: s.active,
+      pgStatus: cluster?.status ?? "unknown",
+      pgVersion: cluster?.version ?? null,
+      pgError: cluster?.errorMessage ?? null,
+      pgCheckedAt: cluster?.checkedAt ?? null,
+      database: ownDatabases[0]
+        ? {
+            sizeBytes: ownDatabases[0].sizeBytes,
+            activeConnections: ownDatabases[0].activeConnections,
+            latencyMs: ownDatabases[0].latencyMs,
+          }
+        : null,
+      expected: ownExpected.map((e) => {
+        const check = checkMap.get(e.id);
+        const peer = e.peerServerId ? servers.find((x) => x.id === e.peerServerId) : null;
+        return {
+          id: e.id,
+          kind: e.kind,
+          name: e.name,
+          direction: e.direction,
+          peerName: peer?.nombre ?? null,
+          notes: e.notes,
+          status: check?.status ?? null,
+          active: check?.active ?? null,
+          checkedAt: check?.checkedAt ?? null,
+        };
+      }),
+    };
+  });
 
   const lastSync = db
     .select()
@@ -19,96 +71,8 @@ export async function GET() {
     .limit(1)
     .all();
 
-  const sucursalsById = new Map(sucursalesRows.map((s) => [s.id, s]));
-
-  const clusterData = clusters.map((cluster) => {
-    const dbs = databases.filter((d) => d.clusterPort === cluster.clusterPort);
-    const clusterItems = items.filter((i) => i.clusterPort === cluster.clusterPort);
-
-    const sucursalMap = new Map<number, {
-      sucursalId: number;
-      nombre: string | null;
-      ip: string | null;
-      puerto: number | null;
-      activo: boolean | null;
-      slotCentralToFilial: { name: string; active: boolean } | null;
-      slotFilialToCentral: { name: string; active: boolean } | null;
-      subscription: { name: string; active: boolean; extra: unknown } | null;
-      publication: { name: string } | null;
-      statReplication: { name: string; state: string; extra: unknown } | null;
-    }>();
-
-    const ensureSuc = (sid: number) => {
-      if (!sucursalMap.has(sid)) {
-        const row = sucursalsById.get(sid);
-        sucursalMap.set(sid, {
-          sucursalId: sid,
-          nombre: row?.nombre ?? null,
-          ip: row?.ip ?? null,
-          puerto: row?.puerto ?? null,
-          activo: row?.activo ?? null,
-          slotCentralToFilial: null,
-          slotFilialToCentral: null,
-          subscription: null,
-          publication: null,
-          statReplication: null,
-        });
-      }
-      return sucursalMap.get(sid)!;
-    };
-
-    const orphan: typeof clusterItems = [];
-    for (const it of clusterItems) {
-      if (it.sucursalId != null) {
-        const s = ensureSuc(it.sucursalId);
-        const extra = it.extraJson ? JSON.parse(it.extraJson) : null;
-        if (it.kind === "slot") {
-          if (it.direction === "central_to_filial") {
-            s.slotCentralToFilial = { name: it.name, active: !!it.active };
-          } else {
-            s.slotFilialToCentral = { name: it.name, active: !!it.active };
-          }
-        } else if (it.kind === "subscription") {
-          s.subscription = { name: it.name, active: !!it.active, extra };
-        } else if (it.kind === "publication") {
-          s.publication = { name: it.name };
-        } else if (it.kind === "stat_replication") {
-          s.statReplication = { name: it.name, state: extra?.state ?? "?", extra };
-        }
-      } else {
-        orphan.push(it);
-      }
-    }
-
-    return {
-      clusterPort: cluster.clusterPort,
-      label: cluster.label,
-      status: cluster.status,
-      version: cluster.version,
-      errorMessage: cluster.errorMessage,
-      checkedAt: cluster.checkedAt,
-      databases: dbs.map((d) => ({
-        name: d.name,
-        status: d.status,
-        sizeBytes: d.sizeBytes,
-        activeConnections: d.activeConnections,
-        latencyMs: d.latencyMs,
-        errorMessage: d.errorMessage,
-        checkedAt: d.checkedAt,
-      })),
-      sucursales: Array.from(sucursalMap.values()).sort((a, b) => a.sucursalId - b.sucursalId),
-      orphanItems: orphan.map((o) => ({
-        kind: o.kind,
-        name: o.name,
-        active: o.active,
-        database: o.database,
-        extra: o.extraJson ? JSON.parse(o.extraJson) : null,
-      })),
-    };
-  });
-
   return NextResponse.json({
-    clusters: clusterData,
+    servers: data,
     sucursales: sucursalesRows,
     lastSync: lastSync[0] ?? null,
   });

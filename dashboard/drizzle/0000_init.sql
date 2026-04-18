@@ -187,6 +187,52 @@ CREATE TABLE IF NOT EXISTS sucursales (
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS monitored_servers (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  kind TEXT NOT NULL,
+  empresa TEXT,
+  nombre TEXT NOT NULL,
+  ip TEXT,
+  app_port INTEGER,
+  pg_host TEXT,
+  pg_port INTEGER,
+  pg_database TEXT,
+  pg_user TEXT,
+  pg_password TEXT,
+  channel TEXT,
+  os TEXT,
+  sucursal_id INTEGER,
+  github_environment TEXT,
+  active INTEGER NOT NULL DEFAULT 1,
+  notes TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_monitored_servers_kind ON monitored_servers(kind);
+CREATE INDEX IF NOT EXISTS idx_monitored_servers_empresa ON monitored_servers(empresa);
+CREATE INDEX IF NOT EXISTS idx_monitored_servers_environment ON monitored_servers(github_environment);
+
+CREATE TABLE IF NOT EXISTS expected_replication (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  server_id INTEGER NOT NULL REFERENCES monitored_servers(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL,
+  name TEXT NOT NULL,
+  peer_server_id INTEGER REFERENCES monitored_servers(id) ON DELETE SET NULL,
+  direction TEXT,
+  notes TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE (server_id, kind, name)
+);
+CREATE INDEX IF NOT EXISTS idx_expected_repl_server ON expected_replication(server_id);
+
+CREATE TABLE IF NOT EXISTS replication_check_results (
+  expected_id INTEGER PRIMARY KEY REFERENCES expected_replication(id) ON DELETE CASCADE,
+  status TEXT NOT NULL,
+  active INTEGER,
+  extra_json TEXT,
+  checked_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS sync_runs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   job_name TEXT NOT NULL,

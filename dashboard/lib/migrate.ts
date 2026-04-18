@@ -101,6 +101,40 @@ async function main() {
   console.log(
     `[migrate] seed ok: ${COMPONENTS.length} components, ${INSTANCES.length} instances`,
   );
+
+  // Auto-seed monitored_servers desde instances si está vacío
+  const existingServers = db.select().from(schema.monitoredServers).all();
+  if (existingServers.length === 0) {
+    const allInstances = db.select().from(schema.instances).all();
+    for (const inst of allInstances) {
+      if (inst.kind !== "central_instance" && inst.kind !== "filial") continue;
+      const sucursalMatch = inst.environment?.match(/filial[-_]?(\d+)/i);
+      db.insert(schema.monitoredServers).values({
+        kind: inst.kind === "central_instance" ? "central" : "filial",
+        empresa: inst.company,
+        nombre: inst.displayName,
+        ip: inst.host,
+        appPort: inst.port,
+        pgHost: inst.host,
+        pgPort: inst.kind === "central_instance"
+          ? (inst.port === 8084 ? 5552 : 5551)
+          : 5432,
+        pgDatabase: inst.kind === "central_instance"
+          ? (inst.environment ?? null)
+          : "general",
+        pgUser: "franco",
+        pgPassword: null,
+        channel: null,
+        os: inst.environment?.includes("windows") ? "windows" : (inst.environment?.includes("linux") ? "linux" : null),
+        sucursalId: sucursalMatch ? Number(sucursalMatch[1]) : null,
+        githubEnvironment: inst.environment,
+        active: inst.active,
+        notes: inst.notes,
+      }).run();
+    }
+    const created = db.select().from(schema.monitoredServers).all();
+    console.log(`[migrate] auto-seed monitored_servers: ${created.length} desde instances`);
+  }
 }
 
 main().catch((err) => {
