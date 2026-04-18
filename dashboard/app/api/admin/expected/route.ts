@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { db, schema } from "@/lib/db";
 import { requireAuth } from "@/lib/admin-guard";
+import { writeSnapshotToDisk } from "@/lib/snapshot";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -49,6 +50,7 @@ export async function POST(req: NextRequest) {
       direction: body.direction ?? null,
       notes: body.notes ?? null,
     }).run();
+    writeSnapshotToDisk();
     return NextResponse.json({ id: Number(result.lastInsertRowid) }, { status: 201 });
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 400 });

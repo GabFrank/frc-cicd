@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRef, useState } from "react";
 import { usePollJson } from "@/components/PollQuery";
 import { statusToPill, timeAgo } from "@/lib/utils";
 
@@ -24,7 +25,28 @@ interface Server {
 }
 
 export default function AdminPage() {
-  const { data, isLoading, error, refetch } = usePollJson<Server[]>("/api/admin/servers", ["admin-servers"]);
+  const { data, isLoading, error } = usePollJson<Server[]>("/api/admin/servers", ["admin-servers"]);
+  const [importMsg, setImportMsg] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const onImport = async (file: File, mode: "merge" | "replace") => {
+    setImportMsg(null);
+    try {
+      const text = await file.text();
+      const snapshot = JSON.parse(text);
+      const res = await fetch("/api/admin/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ snapshot, mode }),
+      });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.error ?? `${res.status}`);
+      setImportMsg(`✓ ${j.serversInserted} insertados · ${j.serversUpdated} actualizados · ${j.expectedInserted} expected`);
+      window.location.reload();
+    } catch (err) {
+      setImportMsg(`✗ ${err instanceof Error ? err.message : String(err)}`);
+    }
+  };
 
   if (isLoading) return <div className="text-text-secondary">Cargando…</div>;
   if (error) return <div className="text-status-err">Error: {(error as Error).message}</div>;
@@ -46,13 +68,49 @@ export default function AdminPage() {
             Cada servidor declara su PG endpoint y los pub/sub que se esperan encontrar.
           </p>
         </div>
-        <Link
-          href="/dashboard/admin/servers/new"
-          className="rounded bg-status-info/20 border border-status-info/40 px-3 py-1.5 text-sm hover:bg-status-info/30"
-        >
-          + Nuevo servidor
-        </Link>
+        <div className="flex items-center gap-2">
+          <a
+            href="/api/admin/export"
+            download
+            className="rounded bg-bg-raised border border-border-default px-3 py-1.5 text-sm hover:bg-bg-surface"
+            title="Descargar JSON con monitored_servers + expected_replication"
+          >
+            ⬇ Export
+          </a>
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="rounded bg-bg-raised border border-border-default px-3 py-1.5 text-sm hover:bg-bg-surface"
+            title="Restaurar desde JSON exportado"
+          >
+            ⬆ Import
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="application/json"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (!f) return;
+              const mode = confirm("OK = MERGE (preservar locales y agregar/actualizar)\nCancel = REPLACE (borrar todo y restaurar)") ? "merge" : "replace";
+              onImport(f, mode);
+              e.target.value = "";
+            }}
+          />
+          <Link
+            href="/dashboard/admin/servers/new"
+            className="rounded bg-status-info/20 border border-status-info/40 px-3 py-1.5 text-sm hover:bg-status-info/30"
+          >
+            + Nuevo servidor
+          </Link>
+        </div>
       </div>
+      {importMsg && (
+        <div className={`card text-sm ${importMsg.startsWith("✓") ? "text-status-ok" : "text-status-err"}`}>
+          {importMsg}
+        </div>
+      )}
 
       {servers.length === 0 && (
         <div className="card text-text-muted">Sin servidores registrados.</div>

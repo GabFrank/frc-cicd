@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { db, schema } from "@/lib/db";
 import { parseSucursalFromSlot, withClient } from "@/lib/pg";
 import { requireAuth } from "@/lib/admin-guard";
+import { writeSnapshotToDisk } from "@/lib/snapshot";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -117,6 +118,8 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
       inserted += 1;
     }
   }
+
+  if (inserted > 0 || updated > 0) writeSnapshotToDisk();
 
   return NextResponse.json({
     ok: true,

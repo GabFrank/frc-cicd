@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { db, schema } from "@/lib/db";
 import { requireAuth } from "@/lib/admin-guard";
+import { writeSnapshotToDisk } from "@/lib/snapshot";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,5 +13,6 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
 
   const { id } = await params;
   db.delete(schema.expectedReplication).where(eq(schema.expectedReplication.id, Number(id))).run();
+  writeSnapshotToDisk();
   return NextResponse.json({ ok: true });
 }

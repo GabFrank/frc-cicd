@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db, schema } from "@/lib/db";
 import { requireAuth } from "@/lib/admin-guard";
+import { writeSnapshotToDisk } from "@/lib/snapshot";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -49,5 +50,6 @@ export async function POST(req: NextRequest) {
     updatedAt: now,
   }).run();
 
+  writeSnapshotToDisk();
   return NextResponse.json({ id: Number(result.lastInsertRowid) }, { status: 201 });
 }
