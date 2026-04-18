@@ -22,12 +22,18 @@ export async function GET() {
     .all();
 
   const instances = db.select().from(schema.instances).all();
-  const byId = new Map(instances.map((i) => [i.id, i]));
+  const servers = db.select().from(schema.monitoredServers).all();
+  const byInstance = new Map(instances.map((i) => [i.id, i]));
+  const byServer = new Map(servers.map((s) => [s.id, s]));
 
-  const enrich = (a: typeof active[number]) => ({
-    ...a,
-    instanceName: a.instanceId ? byId.get(a.instanceId)?.displayName : null,
-  });
+  const enrich = (a: typeof active[number]) => {
+    const srv = a.serverId ? byServer.get(a.serverId) : null;
+    const inst = a.instanceId ? byInstance.get(a.instanceId) : null;
+    return {
+      ...a,
+      instanceName: srv?.nombre ?? inst?.displayName ?? null,
+    };
+  };
 
   return NextResponse.json({
     active: active.map(enrich),

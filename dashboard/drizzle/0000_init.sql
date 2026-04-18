@@ -98,7 +98,7 @@ CREATE INDEX IF NOT EXISTS idx_deployments_created ON deployments(created_at);
 
 CREATE TABLE IF NOT EXISTS health_checks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  instance_id INTEGER NOT NULL REFERENCES instances(id),
+  instance_id INTEGER REFERENCES instances(id),
   checked_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   status TEXT NOT NULL,
   http_code INTEGER,

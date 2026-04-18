@@ -1,11 +1,11 @@
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNull, inArray } from "drizzle-orm";
 import { db, schema } from "../lib/db";
 
 interface Candidate {
   fingerprint: string;
   severity: "info" | "warn" | "critical";
   kind: string;
-  instanceId?: number;
+  serverId?: number;
   componentId?: number;
   title: string;
   detail?: string;
@@ -13,6 +13,9 @@ interface Candidate {
 
 const STALE_DEPLOYMENT_MS = 2 * 60 * 60 * 1000; // 2h
 const HEALTH_FAIL_THRESHOLD = 3;
+
+const PG_CONN_WARN = Number(process.env.PG_CONN_WARN ?? 50);
+const PG_CONN_CRIT = Number(process.env.PG_CONN_CRIT ?? 90);
 
 export async function evaluateAlerts() {
   const runId = db
@@ -23,145 +26,185 @@ export async function evaluateAlerts() {
 
   const candidates: Candidate[] = [];
   try {
-    const filiales = db
+    const servers = db
       .select()
-      .from(schema.instances)
-      .where(and(eq(schema.instances.kind, "filial"), eq(schema.instances.active, true)))
+      .from(schema.monitoredServers)
+      .where(eq(schema.monitoredServers.active, true))
       .all();
+    const serversById = new Map(servers.map((s) => [s.id, s]));
 
+    // Filiales: chequear deployments por github_environment
+    const filiales = servers.filter((s) => s.kind === "filial" && s.githubEnvironment);
     for (const f of filiales) {
-      if (!f.environment) continue;
-      const lastDeploys = db
+      const env = f.githubEnvironment as string;
+      const deps: typeof schema.deployments.$inferSelect[] = db
         .select()
         .from(schema.deployments)
-        .where(eq(schema.deployments.environment, f.environment))
+        .where(eq(schema.deployments.environment, env))
         .orderBy(desc(schema.deployments.createdAt))
         .limit(5)
         .all();
 
-      const lastSuccess = lastDeploys.find((d) => d.latestStatus === "success");
-      const latestAttempt = lastDeploys[0];
+      const lastSuccess = deps.find((d) => d.latestStatus === "success");
+      const latestAttempt = deps[0];
 
-      if (!lastSuccess || !lastSuccess.latestStatusAt) {
+      if (!latestAttempt) {
+        // No hay ningún deployment para este environment — no generar alerta zombie.
+        continue;
+      }
+
+      if (!lastSuccess) {
         candidates.push({
-          fingerprint: `filial-no-success:${f.id}`,
+          fingerprint: `filial-no-success:srv:${f.id}`,
           severity: "warn",
           kind: "filial_no_success",
-          instanceId: f.id,
-          componentId: f.componentId ?? undefined,
-          title: `Filial ${f.displayName} sin deployment exitoso`,
-          detail: `Último intento: ${latestAttempt?.latestStatus ?? "ninguno"}`,
+          serverId: f.id,
+          
+          title: `Filial ${f.nombre} sin deployment exitoso`,
+          detail: `Último intento: ${latestAttempt.latestStatus ?? "desconocido"}`,
         });
-      } else {
+      } else if (lastSuccess.latestStatusAt) {
         const age = Date.now() - new Date(lastSuccess.latestStatusAt).getTime();
         if (age > STALE_DEPLOYMENT_MS) {
           candidates.push({
-            fingerprint: `filial-stale:${f.id}`,
+            fingerprint: `filial-stale:srv:${f.id}`,
             severity: age > 12 * 60 * 60 * 1000 ? "critical" : "warn",
             kind: "filial_stale",
-            instanceId: f.id,
-            componentId: f.componentId ?? undefined,
-            title: `Filial ${f.displayName} sin update hace ${Math.round(age / 3600000)}h`,
+            serverId: f.id,
+            
+            title: `Filial ${f.nombre} sin update hace ${Math.round(age / 3600000)}h`,
             detail: `Último éxito: ${lastSuccess.latestStatusAt}`,
           });
         }
       }
 
-      if (latestAttempt?.latestStatus === "failure") {
+      if (latestAttempt.latestStatus === "failure") {
         candidates.push({
-          fingerprint: `filial-failure:${f.id}:${latestAttempt.id}`,
+          fingerprint: `filial-failure:srv:${f.id}:${latestAttempt.id}`,
           severity: "critical",
           kind: "filial_failure",
-          instanceId: f.id,
-          componentId: f.componentId ?? undefined,
-          title: `Filial ${f.displayName} falló su último deploy`,
+          serverId: f.id,
+          
+          title: `Filial ${f.nombre} falló su último deploy`,
           detail: latestAttempt.latestStatusDescription ?? undefined,
         });
       }
 
-      if (latestAttempt?.latestStatusDescription?.toLowerCase().includes("rolled back") ||
-          latestAttempt?.latestStatusDescription?.toLowerCase().includes("rollback")) {
+      const descLower = latestAttempt.latestStatusDescription?.toLowerCase() ?? "";
+      if (descLower.includes("rolled back") || descLower.includes("rollback")) {
         candidates.push({
-          fingerprint: `filial-rollback:${f.id}:${latestAttempt.id}`,
+          fingerprint: `filial-rollback:srv:${f.id}:${latestAttempt.id}`,
           severity: "critical",
           kind: "filial_rollback",
-          instanceId: f.id,
-          componentId: f.componentId ?? undefined,
-          title: `Filial ${f.displayName} hizo rollback`,
+          serverId: f.id,
+          
+          title: `Filial ${f.nombre} hizo rollback`,
           detail: latestAttempt.latestStatusDescription ?? undefined,
         });
       }
     }
 
-    const centrals = db
-      .select()
-      .from(schema.instances)
-      .where(and(eq(schema.instances.kind, "central_instance"), eq(schema.instances.active, true)))
-      .all();
-
-    for (const c of centrals) {
+    // Centrales: chequear health_checks por server_id
+    const centrales = servers.filter((s) => s.kind === "central");
+    for (const c of centrales) {
       const recent = db
         .select()
         .from(schema.healthChecks)
-        .where(eq(schema.healthChecks.instanceId, c.id))
+        .where(eq(schema.healthChecks.serverId, c.id))
         .orderBy(desc(schema.healthChecks.checkedAt))
         .limit(HEALTH_FAIL_THRESHOLD)
         .all();
 
       if (recent.length >= HEALTH_FAIL_THRESHOLD && recent.every((h) => h.status === "down")) {
         candidates.push({
-          fingerprint: `central-down:${c.id}`,
+          fingerprint: `central-down:srv:${c.id}`,
           severity: "critical",
           kind: "central_down",
-          instanceId: c.id,
-          componentId: c.componentId ?? undefined,
-          title: `Instancia central ${c.displayName} DOWN`,
+          serverId: c.id,
+          
+          title: `Instancia central ${c.nombre} DOWN`,
           detail: `Último HTTP: ${recent[0]?.httpCode ?? "timeout"}`,
         });
       }
     }
 
+    // Cluster PG por server
     const pgClusters = db.select().from(schema.pgClusterStatus).all();
     for (const cluster of pgClusters) {
-      if (cluster.status !== "up") {
+      if (cluster.status !== "up" && cluster.serverId) {
+        const srv = serversById.get(cluster.serverId);
         candidates.push({
-          fingerprint: `pg-cluster-down:${cluster.clusterPort}`,
+          fingerprint: `pg-cluster-down:srv:${cluster.serverId}`,
           severity: "critical",
           kind: "pg_cluster_down",
-          title: `Cluster PG ${cluster.label} (:${cluster.clusterPort}) DOWN`,
+          serverId: cluster.serverId,
+          title: `Cluster PG ${srv?.nombre ?? cluster.label} DOWN`,
           detail: cluster.errorMessage ?? undefined,
         });
       }
     }
 
-    const replItems = db.select().from(schema.pgReplicationItems).all();
-    const slotsBySucursal = new Map<number, { c2f: boolean | null; f2c: boolean | null }>();
-    for (const it of replItems) {
-      if (it.kind !== "slot" || it.sucursalId == null) continue;
-      const entry = slotsBySucursal.get(it.sucursalId) ?? { c2f: null, f2c: null };
-      if (it.direction === "central_to_filial") entry.c2f = !!it.active;
-      else if (it.direction === "filial_to_central") entry.f2c = !!it.active;
-      slotsBySucursal.set(it.sucursalId, entry);
+    // Replicación esperada vs encontrada
+    const checkResults = db
+      .select()
+      .from(schema.replicationCheckResults)
+      .all();
+    const expected = db.select().from(schema.expectedReplication).all();
+    const expectedById = new Map(expected.map((e) => [e.id, e]));
+    for (const r of checkResults) {
+      const exp = expectedById.get(r.expectedId);
+      if (!exp) continue;
+      const isOk = r.status === "found" && r.active === true;
+      if (isOk) continue;
+      const srv = serversById.get(exp.serverId);
+      if (!srv) continue;
+      const sev: "warn" | "critical" =
+        r.status === "missing" ? "critical" : "warn";
+      candidates.push({
+        fingerprint: `repl:srv:${exp.serverId}:exp:${exp.id}`,
+        severity: sev,
+        kind: "replication_problem",
+        serverId: exp.serverId,
+        title: `${exp.kind} '${exp.name}' ${r.status === "missing" ? "NO encontrado" : "INACTIVO"} en ${srv.nombre}`,
+        detail: `Status=${r.status} active=${r.active}`,
+      });
     }
-    for (const [sid, entry] of slotsBySucursal.entries()) {
-      if (entry.c2f === false || entry.f2c === false) {
+
+    // Conexiones PG altas
+    const pgDbs = db.select().from(schema.pgDatabases).all();
+    for (const d of pgDbs) {
+      if (d.activeConnections == null || d.serverId == null) continue;
+      if (d.activeConnections >= PG_CONN_CRIT) {
+        const srv = serversById.get(d.serverId);
         candidates.push({
-          fingerprint: `repl-inactive:${sid}`,
+          fingerprint: `pg-conn:srv:${d.serverId}:${d.name}`,
+          severity: "critical",
+          kind: "pg_connections_high",
+          serverId: d.serverId,
+          title: `${d.activeConnections} conexiones en ${srv?.nombre ?? "?"}/${d.name}`,
+          detail: `Threshold critical: ${PG_CONN_CRIT}`,
+        });
+      } else if (d.activeConnections >= PG_CONN_WARN) {
+        const srv = serversById.get(d.serverId);
+        candidates.push({
+          fingerprint: `pg-conn:srv:${d.serverId}:${d.name}`,
           severity: "warn",
-          kind: "replication_inactive",
-          title: `Slot replicación inactivo en sucursal ${sid}`,
-          detail: `C→F=${entry.c2f ?? "?"} · F→C=${entry.f2c ?? "?"}`,
+          kind: "pg_connections_high",
+          serverId: d.serverId,
+          title: `${d.activeConnections} conexiones en ${srv?.nombre ?? "?"}/${d.name}`,
+          detail: `Threshold warn: ${PG_CONN_WARN}`,
         });
       }
     }
 
+    // Persistir candidatos
     const openFingerprints = new Set(candidates.map((c) => c.fingerprint));
     for (const c of candidates) {
       db.insert(schema.alerts)
         .values({
           severity: c.severity,
           kind: c.kind,
-          instanceId: c.instanceId ?? null,
+          serverId: c.serverId ?? null,
           componentId: c.componentId ?? null,
           title: c.title,
           detail: c.detail ?? null,
@@ -180,12 +223,14 @@ export async function evaluateAlerts() {
         .run();
     }
 
+    // Auto-resolver alertas que ya no aplican (con prefix :srv:)
     const active = db
       .select()
       .from(schema.alerts)
       .where(isNull(schema.alerts.resolvedAt))
       .all();
     for (const a of active) {
+      if (!a.fingerprint.includes(":srv:")) continue;
       if (!openFingerprints.has(a.fingerprint)) {
         db.update(schema.alerts)
           .set({ resolvedAt: new Date().toISOString() })

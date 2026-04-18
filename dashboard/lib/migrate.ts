@@ -25,10 +25,153 @@ function applySchema() {
   sqlite.exec(sql);
 }
 
+function columnExists(table: string, column: string): boolean {
+  const rows = sqlite.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+  return rows.some((r) => r.name === column);
+}
+
+function columnIsNotNull(table: string, column: string): boolean {
+  const rows = sqlite.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string; notnull: number }>;
+  return rows.some((r) => r.name === column && r.notnull === 1);
+}
+
+function rebuildInstanceRuntimeServerPk() {
+  if (!columnExists("instance_runtime", "server_id")) return;
+  const cols = sqlite.prepare(`PRAGMA table_info(instance_runtime)`).all() as Array<{ name: string; pk: number }>;
+  const instanceIdCol = cols.find((c) => c.name === "instance_id");
+  if (!instanceIdCol || instanceIdCol.pk === 0) return; // ya no es PK, OK
+
+  console.log("[migrate] 0001: rebuild instance_runtime (PK = server_id)");
+  sqlite.exec(`
+    PRAGMA foreign_keys=off;
+    BEGIN TRANSACTION;
+    CREATE TABLE instance_runtime_new (
+      server_id INTEGER PRIMARY KEY,
+      instance_id INTEGER REFERENCES instances(id),
+      version TEXT,
+      build TEXT,
+      git_commit TEXT,
+      uptime_sec INTEGER,
+      heap_used_bytes INTEGER,
+      heap_max_bytes INTEGER,
+      threads INTEGER,
+      info_json TEXT,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    INSERT INTO instance_runtime_new (server_id, instance_id, version, build, git_commit, uptime_sec, heap_used_bytes, heap_max_bytes, threads, info_json, updated_at)
+      SELECT
+        COALESCE(server_id, (SELECT ms.id FROM monitored_servers ms JOIN instances i ON ms.ip = i.host AND ms.app_port = i.port WHERE i.id = instance_runtime.instance_id LIMIT 1)),
+        instance_id, version, build, git_commit, uptime_sec, heap_used_bytes, heap_max_bytes, threads, info_json, updated_at
+      FROM instance_runtime
+      WHERE COALESCE(server_id, (SELECT ms.id FROM monitored_servers ms JOIN instances i ON ms.ip = i.host AND ms.app_port = i.port WHERE i.id = instance_runtime.instance_id LIMIT 1)) IS NOT NULL;
+    DROP TABLE instance_runtime;
+    ALTER TABLE instance_runtime_new RENAME TO instance_runtime;
+    CREATE INDEX IF NOT EXISTS idx_instance_runtime_instance ON instance_runtime(instance_id);
+    COMMIT;
+    PRAGMA foreign_keys=on;
+  `);
+}
+
+function rebuildHealthChecksNullableInstanceId() {
+  if (!columnIsNotNull("health_checks", "instance_id")) return;
+  console.log("[migrate] 0001: rebuild health_checks (instance_id NULLABLE)");
+  sqlite.exec(`
+    PRAGMA foreign_keys=off;
+    BEGIN TRANSACTION;
+    CREATE TABLE health_checks_new (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      instance_id INTEGER REFERENCES instances(id),
+      server_id INTEGER REFERENCES monitored_servers(id),
+      checked_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      status TEXT NOT NULL,
+      http_code INTEGER,
+      latency_ms INTEGER,
+      body_excerpt TEXT
+    );
+    INSERT INTO health_checks_new (id, instance_id, server_id, checked_at, status, http_code, latency_ms, body_excerpt)
+      SELECT id, instance_id,
+             ${columnExists("health_checks", "server_id") ? "server_id" : "NULL"},
+             checked_at, status, http_code, latency_ms, body_excerpt
+      FROM health_checks;
+    DROP TABLE health_checks;
+    ALTER TABLE health_checks_new RENAME TO health_checks;
+    CREATE INDEX IF NOT EXISTS idx_health_checks_instance   ON health_checks(instance_id);
+    CREATE INDEX IF NOT EXISTS idx_health_checks_checked_at ON health_checks(checked_at);
+    CREATE INDEX IF NOT EXISTS idx_health_checks_server     ON health_checks(server_id);
+    COMMIT;
+    PRAGMA foreign_keys=on;
+  `);
+}
+
+function apply0001() {
+  const tables: Array<[string, string]> = [
+    ["health_checks", "server_id"],
+    ["instance_runtime", "server_id"],
+    ["alerts", "server_id"],
+    ["pg_cluster_status", "server_id"],
+    ["pg_databases", "server_id"],
+  ];
+  let added = 0;
+  for (const [tbl, col] of tables) {
+    if (!columnExists(tbl, col)) {
+      sqlite.exec(`ALTER TABLE ${tbl} ADD COLUMN ${col} INTEGER REFERENCES monitored_servers(id)`);
+      added += 1;
+    }
+  }
+  sqlite.exec(`
+    CREATE INDEX IF NOT EXISTS idx_health_checks_server    ON health_checks(server_id);
+    CREATE INDEX IF NOT EXISTS idx_instance_runtime_server ON instance_runtime(server_id);
+    CREATE INDEX IF NOT EXISTS idx_alerts_server           ON alerts(server_id);
+    CREATE INDEX IF NOT EXISTS idx_pg_cluster_server       ON pg_cluster_status(server_id);
+    CREATE INDEX IF NOT EXISTS idx_pg_databases_server     ON pg_databases(server_id);
+  `);
+  if (added > 0) console.log(`[migrate] 0001_server_registry: ${added} cols agregadas`);
+
+  rebuildHealthChecksNullableInstanceId();
+  rebuildInstanceRuntimeServerPk();
+}
+
+function backfillServerIds() {
+  const updates = sqlite.prepare(`
+    UPDATE health_checks
+    SET server_id = (
+      SELECT ms.id FROM monitored_servers ms
+      JOIN instances i ON ms.ip = i.host AND ms.app_port = i.port
+      WHERE i.id = health_checks.instance_id
+      LIMIT 1
+    )
+    WHERE server_id IS NULL AND instance_id IS NOT NULL
+  `).run();
+  if (updates.changes > 0) console.log(`[migrate] backfill health_checks.server_id: ${updates.changes} rows`);
+
+  const u2 = sqlite.prepare(`
+    UPDATE instance_runtime
+    SET server_id = (
+      SELECT ms.id FROM monitored_servers ms
+      JOIN instances i ON ms.ip = i.host AND ms.app_port = i.port
+      WHERE i.id = instance_runtime.instance_id
+      LIMIT 1
+    )
+    WHERE server_id IS NULL AND instance_id IS NOT NULL
+  `).run();
+  if (u2.changes > 0) console.log(`[migrate] backfill instance_runtime.server_id: ${u2.changes} rows`);
+}
+
+function cleanupZombieAlerts() {
+  const r = sqlite.prepare(`
+    UPDATE alerts SET resolved_at = datetime('now')
+    WHERE resolved_at IS NULL
+      AND fingerprint NOT LIKE '%:srv:%'
+      AND kind IN ('filial_no_success','filial_stale','filial_failure','filial_rollback','central_down','replication_inactive','pg_cluster_down')
+  `).run();
+  if (r.changes > 0) console.log(`[migrate] cleanup zombie alerts: ${r.changes} resolved`);
+}
+
 async function main() {
   console.log(`[migrate] DB: ${dbPath}`);
   applySchema();
   console.log("[migrate] schema ok");
+  apply0001();
 
   for (const c of COMPONENTS) {
     const existing = db.select().from(schema.components).where(eq(schema.components.slug, c.slug)).all();
@@ -135,6 +278,9 @@ async function main() {
     const created = db.select().from(schema.monitoredServers).all();
     console.log(`[migrate] auto-seed monitored_servers: ${created.length} desde instances`);
   }
+
+  backfillServerIds();
+  cleanupZombieAlerts();
 }
 
 main().catch((err) => {

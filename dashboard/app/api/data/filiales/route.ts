@@ -1,83 +1,96 @@
 import { NextResponse } from "next/server";
-import { desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { db, schema } from "@/lib/db";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-function classify(env: string): { company: string; channel: string; os: string | null; number: number | null } {
-  const m = env.match(/^([a-z0-9]+)[-_]filial[-_](\d+)?[-_]?(linux|windows)?/i);
-  if (m) {
-    return {
-      company: m[1].toLowerCase(),
-      channel: m[1].toLowerCase(),
-      number: m[2] ? Number(m[2]) : null,
-      os: m[3]?.toLowerCase() ?? null,
-    };
-  }
-  if (/filial/i.test(env)) {
-    return { company: "filial", channel: "unknown", os: null, number: null };
-  }
-  return { company: env, channel: "unknown", os: null, number: null };
+interface FilialPayload {
+  id: number | null;
+  name: string;
+  displayName: string;
+  environment: string | null;
+  company: string | null;
+  host: string | null;
+  port: number | null;
+  channel: string | null;
+  os: string | null;
+  notes: string | null;
+  registered: boolean;
+  health: {
+    status: string;
+    httpCode: number | null;
+    latencyMs: number | null;
+    checkedAt: string;
+  } | null;
+  latest: {
+    id: number;
+    ref: string | null;
+    status: string | null;
+    statusAt: string | null;
+    description: string | null;
+    logUrl: string | null;
+  } | null;
+  lastSuccess: { ref: string | null; statusAt: string | null } | null;
+  history: Array<{ id: number; ref: string | null; status: string | null; createdAt: string | null }>;
 }
 
 export async function GET() {
-  const filialComponent = db
+  // Filiales del registry (fuente de verdad)
+  const registered = db
     .select()
-    .from(schema.components)
-    .where(eq(schema.components.slug, "filial"))
-    .get();
-
-  if (!filialComponent) return NextResponse.json([]);
-
-  const envs = db
-    .select({
-      environment: schema.deployments.environment,
-      count: sql<number>`count(*)`.as("count"),
-    })
-    .from(schema.deployments)
-    .where(eq(schema.deployments.componentId, filialComponent.id))
-    .groupBy(schema.deployments.environment)
+    .from(schema.monitoredServers)
+    .where(and(eq(schema.monitoredServers.kind, "filial"), eq(schema.monitoredServers.active, true)))
     .all();
 
-  const filialEnvs = envs.filter((e) => /filial/i.test(e.environment) || /farmacia/i.test(e.environment));
+  const filialEnvs = new Set(
+    registered.map((r) => r.githubEnvironment).filter((e): e is string => !!e),
+  );
 
-  const allInstances = db
-    .select()
-    .from(schema.instances)
-    .where(inArray(schema.instances.environment, filialEnvs.map((e) => e.environment)))
-    .all();
-  const byEnv = new Map(allInstances.map((i) => [i.environment ?? "", i]));
+  const data: FilialPayload[] = [];
 
-  const data = filialEnvs.map(({ environment }) => {
-    const deps = db
-      .select()
-      .from(schema.deployments)
-      .where(eq(schema.deployments.environment, environment))
-      .orderBy(desc(schema.deployments.createdAt))
-      .limit(10)
-      .all();
+  for (const r of registered) {
+    const deps = r.githubEnvironment
+      ? db
+          .select()
+          .from(schema.deployments)
+          .where(eq(schema.deployments.environment, r.githubEnvironment))
+          .orderBy(desc(schema.deployments.createdAt))
+          .limit(10)
+          .all()
+      : [];
 
     const latest = deps[0];
     const lastSuccess = deps.find((d) => d.latestStatus === "success");
-    const meta = classify(environment);
-    const known = byEnv.get(environment);
 
-    return {
-      id: known?.id ?? null,
-      name: known?.name ?? environment,
-      displayName:
-        known?.displayName ??
-        (meta.number
-          ? `${meta.company[0].toUpperCase()}${meta.company.slice(1)} · Filial ${meta.number}${meta.os ? ` (${meta.os})` : ""}`
-          : environment),
-      environment,
-      company: known?.company ?? meta.company,
-      host: known?.host ?? null,
-      port: known?.port ?? null,
-      channel: meta.channel,
-      os: meta.os,
-      notes: known?.notes ?? null,
+    const health = db
+      .select()
+      .from(schema.healthChecks)
+      .where(eq(schema.healthChecks.serverId, r.id))
+      .orderBy(desc(schema.healthChecks.checkedAt))
+      .limit(1)
+      .all()[0];
+
+    data.push({
+      id: r.id,
+      name: r.nombre,
+      displayName: r.nombre,
+      environment: r.githubEnvironment,
+      company: r.empresa,
+      host: r.ip,
+      port: r.appPort,
+      channel: r.channel,
+      os: r.os,
+      notes: r.notes,
+      registered: true,
+      health: health
+        ? {
+            status: health.status,
+            httpCode: health.httpCode,
+            latencyMs: health.latencyMs,
+            checkedAt: health.checkedAt,
+          }
+        : null,
       latest: latest
         ? {
             id: latest.id,
@@ -97,10 +110,70 @@ export async function GET() {
         status: d.latestStatus,
         createdAt: d.createdAt,
       })),
-    };
-  });
+    });
+  }
 
-  data.sort((a, b) => a.company.localeCompare(b.company) || a.displayName.localeCompare(b.displayName));
+  // Huérfanas: environments en deployments que no están registrados
+  const filialComponent = db
+    .select()
+    .from(schema.components)
+    .where(eq(schema.components.slug, "filial"))
+    .get();
+  if (filialComponent) {
+    const orphanRows = db
+      .selectDistinct({ environment: schema.deployments.environment })
+      .from(schema.deployments)
+      .where(eq(schema.deployments.componentId, filialComponent.id))
+      .all();
+    for (const row of orphanRows) {
+      const env = row.environment;
+      if (!env || filialEnvs.has(env) || !/filial/i.test(env)) continue;
+      const deps = db
+        .select()
+        .from(schema.deployments)
+        .where(eq(schema.deployments.environment, env))
+        .orderBy(desc(schema.deployments.createdAt))
+        .limit(10)
+        .all();
+      const latest = deps[0];
+      const lastSuccess = deps.find((d) => d.latestStatus === "success");
+      data.push({
+        id: null,
+        name: env,
+        displayName: env,
+        environment: env,
+        company: null,
+        host: null,
+        port: null,
+        channel: null,
+        os: null,
+        notes: "huérfano: no registrado en /admin",
+        registered: false,
+        health: null,
+        latest: latest
+          ? {
+              id: latest.id,
+              ref: latest.ref,
+              status: latest.latestStatus,
+              statusAt: latest.latestStatusAt,
+              description: latest.latestStatusDescription,
+              logUrl: latest.logUrl,
+            }
+          : null,
+        lastSuccess: lastSuccess
+          ? { ref: lastSuccess.ref, statusAt: lastSuccess.latestStatusAt }
+          : null,
+        history: deps.slice(0, 6).map((d) => ({
+          id: d.id,
+          ref: d.ref,
+          status: d.latestStatus,
+          createdAt: d.createdAt,
+        })),
+      });
+    }
+  }
+
+  data.sort((a, b) => (a.company ?? "").localeCompare(b.company ?? "") || a.displayName.localeCompare(b.displayName));
 
   return NextResponse.json(data);
 }

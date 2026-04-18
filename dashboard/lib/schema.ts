@@ -89,7 +89,8 @@ export const deployments = sqliteTable("deployments", {
 
 export const healthChecks = sqliteTable("health_checks", {
   id: integer("id").primaryKey({ autoIncrement: true }),
-  instanceId: integer("instance_id").notNull().references(() => instances.id),
+  instanceId: integer("instance_id").references(() => instances.id),
+  serverId: integer("server_id"),
   checkedAt: text("checked_at").notNull().default(sql`CURRENT_TIMESTAMP`),
   status: text("status").notNull(),
   httpCode: integer("http_code"),
@@ -98,7 +99,8 @@ export const healthChecks = sqliteTable("health_checks", {
 });
 
 export const instanceRuntime = sqliteTable("instance_runtime", {
-  instanceId: integer("instance_id").primaryKey().references(() => instances.id),
+  serverId: integer("server_id").primaryKey(),
+  instanceId: integer("instance_id").references(() => instances.id),
   version: text("version"),
   build: text("build"),
   gitCommit: text("git_commit"),
@@ -115,6 +117,7 @@ export const alerts = sqliteTable("alerts", {
   severity: text("severity").notNull(),
   kind: text("kind").notNull(),
   instanceId: integer("instance_id").references(() => instances.id),
+  serverId: integer("server_id"),
   componentId: integer("component_id").references(() => components.id),
   title: text("title").notNull(),
   detail: text("detail"),
@@ -136,6 +139,7 @@ export const syncRuns = sqliteTable("sync_runs", {
 
 export const pgClusterStatus = sqliteTable("pg_cluster_status", {
   clusterPort: integer("cluster_port").primaryKey(),
+  serverId: integer("server_id"),
   label: text("label").notNull(),
   status: text("status").notNull(),
   version: text("version"),
@@ -146,6 +150,7 @@ export const pgClusterStatus = sqliteTable("pg_cluster_status", {
 export const pgDatabases = sqliteTable("pg_databases", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   clusterPort: integer("cluster_port").notNull(),
+  serverId: integer("server_id"),
   name: text("name").notNull(),
   sizeBytes: integer("size_bytes"),
   activeConnections: integer("active_connections"),

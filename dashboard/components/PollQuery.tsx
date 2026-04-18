@@ -1,8 +1,17 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, type UseQueryOptions } from "@tanstack/react-query";
 
-export function usePollJson<T>(url: string, key: string[] = [url]) {
+interface PollOptions {
+  refetchInterval?: number;
+  enabled?: boolean;
+}
+
+export function usePollJson<T>(
+  url: string,
+  key: string[] = [url],
+  options?: PollOptions,
+) {
   return useQuery<T>({
     queryKey: key,
     queryFn: async () => {
@@ -10,5 +19,9 @@ export function usePollJson<T>(url: string, key: string[] = [url]) {
       if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
       return res.json();
     },
-  });
+    refetchInterval: options?.refetchInterval ?? 30_000,
+    refetchIntervalInBackground: true,
+    placeholderData: (prev) => prev,
+    enabled: options?.enabled,
+  } as UseQueryOptions<T>);
 }

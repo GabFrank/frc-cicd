@@ -158,48 +158,79 @@ async function probeServer(server: typeof schema.monitoredServers.$inferSelect):
 function persistServerSnapshot(server: typeof schema.monitoredServers.$inferSelect, probe: ServerProbe) {
   const port = server.pgPort ?? 0;
   const label = `${server.empresa ?? "?"}/${server.nombre}`;
+  const now = new Date().toISOString();
 
-  db.insert(schema.pgClusterStatus)
-    .values({
-      clusterPort: port,
-      label,
-      status: probe.status,
-      version: probe.version,
-      errorMessage: probe.error,
-      checkedAt: new Date().toISOString(),
-    })
-    .onConflictDoUpdate({
-      target: schema.pgClusterStatus.clusterPort,
-      set: {
-        label,
-        status: probe.status,
-        version: probe.version,
-        errorMessage: probe.error,
-        checkedAt: new Date().toISOString(),
-      },
-    })
-    .run();
+  // pg_cluster_status — manual upsert por server_id (PK cluster_port colisiona
+  // cuando varios monitored_servers comparten puerto, ej bodega/farmacia/alpha en 5551).
+  const existingCluster = db
+    .select()
+    .from(schema.pgClusterStatus)
+    .all()
+    .find((r) => r.serverId === server.id);
+  const clusterValues = {
+    clusterPort: port,
+    serverId: server.id,
+    label,
+    status: probe.status,
+    version: probe.version,
+    errorMessage: probe.error,
+    checkedAt: now,
+  };
+  if (existingCluster) {
+    // Importante: NO actualizar clusterPort (puede ser un offset alto reservado).
+    const { clusterPort: _ignored, ...rest } = clusterValues;
+    db.update(schema.pgClusterStatus)
+      .set(rest)
+      .where(eq(schema.pgClusterStatus.clusterPort, existingCluster.clusterPort))
+      .run();
+  } else {
+    // Si ya existe alguien con ese clusterPort sin server_id (legacy), usar
+    // un port virtual para no colisionar (offset alto).
+    const collision = db
+      .select()
+      .from(schema.pgClusterStatus)
+      .all()
+      .find((r) => r.clusterPort === port);
+    const pkPort = collision ? 1000000 + server.id : port;
+    db.insert(schema.pgClusterStatus)
+      .values({ ...clusterValues, clusterPort: pkPort })
+      .run();
+  }
 
   if (server.pgDatabase) {
-    const existing = db
+    // pg_databases — unicidad lógica por server_id+name. UNIQUE en schema es
+    // (cluster_port, name) — colisiona si dos servers comparten puerto+db.
+    // Workaround: si ya hay row con mismo (cluster_port, name) pero distinto
+    // server_id, usamos cluster_port virtual con offset.
+    const existingMine = db
       .select()
       .from(schema.pgDatabases)
       .all()
-      .filter((r) => r.clusterPort === port && r.name === server.pgDatabase);
+      .find((r) => r.serverId === server.id && r.name === server.pgDatabase);
+
+    const collision = !existingMine && db
+      .select()
+      .from(schema.pgDatabases)
+      .all()
+      .some((r) => r.clusterPort === port && r.name === server.pgDatabase && r.serverId !== server.id);
+
+    const effectivePort = collision ? 1000000 + server.id : port;
     const values = {
-      clusterPort: port,
+      clusterPort: existingMine?.clusterPort ?? effectivePort,
+      serverId: server.id,
       name: server.pgDatabase,
       sizeBytes: probe.databaseSize,
       activeConnections: probe.activeConnections,
       latencyMs: probe.latencyMs,
       status: probe.status,
       errorMessage: probe.error,
-      checkedAt: new Date().toISOString(),
+      checkedAt: now,
     };
-    if (existing.length === 0) {
-      db.insert(schema.pgDatabases).values(values).run();
+    if (existingMine) {
+      const { clusterPort: _ignored, ...rest } = values;
+      db.update(schema.pgDatabases).set(rest).where(eq(schema.pgDatabases.id, existingMine.id)).run();
     } else {
-      db.update(schema.pgDatabases).set(values).where(eq(schema.pgDatabases.id, existing[0].id)).run();
+      db.insert(schema.pgDatabases).values(values).run();
     }
   }
 

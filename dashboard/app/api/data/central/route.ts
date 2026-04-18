@@ -8,15 +8,15 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const centrals = db
     .select()
-    .from(schema.instances)
-    .where(and(eq(schema.instances.kind, "central_instance"), eq(schema.instances.active, true)))
+    .from(schema.monitoredServers)
+    .where(and(eq(schema.monitoredServers.kind, "central"), eq(schema.monitoredServers.active, true)))
     .all();
 
   const data = centrals.map((c) => {
     const recent = db
       .select()
       .from(schema.healthChecks)
-      .where(eq(schema.healthChecks.instanceId, c.id))
+      .where(eq(schema.healthChecks.serverId, c.id))
       .orderBy(desc(schema.healthChecks.checkedAt))
       .limit(20)
       .all();
@@ -25,13 +25,14 @@ export async function GET() {
     const runtime = db
       .select()
       .from(schema.instanceRuntime)
-      .where(eq(schema.instanceRuntime.instanceId, c.id))
-      .get();
-    const deps = c.environment
+      .all()
+      .find((r) => r.serverId === c.id);
+
+    const deps = c.githubEnvironment
       ? db
           .select()
           .from(schema.deployments)
-          .where(eq(schema.deployments.environment, c.environment))
+          .where(eq(schema.deployments.environment, c.githubEnvironment))
           .orderBy(desc(schema.deployments.createdAt))
           .limit(5)
           .all()
@@ -39,13 +40,13 @@ export async function GET() {
 
     return {
       id: c.id,
-      name: c.name,
-      displayName: c.displayName,
-      host: c.host,
-      port: c.port,
-      environment: c.environment,
+      name: c.nombre,
+      displayName: c.nombre,
+      host: c.ip,
+      port: c.appPort,
+      environment: c.githubEnvironment,
       notes: c.notes,
-      channelId: c.channelId,
+      channelId: null as number | null,
       health: latest
         ? {
             status: latest.status,

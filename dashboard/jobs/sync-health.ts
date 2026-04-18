@@ -1,4 +1,5 @@
 import { and, eq } from "drizzle-orm";
+import { inArray } from "drizzle-orm";
 import { db, schema } from "../lib/db";
 
 interface Result {
@@ -21,61 +22,6 @@ async function fetchJson<T = unknown>(url: string): Promise<T | null> {
   } finally {
     clearTimeout(timer);
   }
-}
-
-async function enrichRuntime(instanceId: number, base: string) {
-  const info = await fetchJson<Record<string, any>>(`${base}/actuator/info`);
-  const memUsed = await fetchJson<{ measurements?: Array<{ value: number }> }>(
-    `${base}/actuator/metrics/jvm.memory.used`,
-  );
-  const memMax = await fetchJson<{ measurements?: Array<{ value: number }> }>(
-    `${base}/actuator/metrics/jvm.memory.max`,
-  );
-  const uptime = await fetchJson<{ measurements?: Array<{ value: number }> }>(
-    `${base}/actuator/metrics/process.uptime`,
-  );
-  const threads = await fetchJson<{ measurements?: Array<{ value: number }> }>(
-    `${base}/actuator/metrics/jvm.threads.live`,
-  );
-
-  const heapUsed = memUsed?.measurements?.[0]?.value ?? null;
-  const heapMax = memMax?.measurements?.[0]?.value ?? null;
-  const uptimeSec = uptime?.measurements?.[0]?.value ?? null;
-  const threadCount = threads?.measurements?.[0]?.value ?? null;
-
-  const version =
-    info?.build?.version ?? info?.app?.version ?? info?.git?.build?.version ?? null;
-  const build = info?.build?.name ?? info?.app?.name ?? null;
-  const gitCommit = info?.git?.commit?.id ?? info?.git?.commit ?? null;
-
-  db.insert(schema.instanceRuntime)
-    .values({
-      instanceId,
-      version,
-      build,
-      gitCommit,
-      uptimeSec: uptimeSec != null ? Math.round(uptimeSec) : null,
-      heapUsedBytes: heapUsed != null ? Math.round(heapUsed) : null,
-      heapMaxBytes: heapMax != null ? Math.round(heapMax) : null,
-      threads: threadCount != null ? Math.round(threadCount) : null,
-      infoJson: info ? JSON.stringify(info) : null,
-      updatedAt: new Date().toISOString(),
-    })
-    .onConflictDoUpdate({
-      target: schema.instanceRuntime.instanceId,
-      set: {
-        version,
-        build,
-        gitCommit,
-        uptimeSec: uptimeSec != null ? Math.round(uptimeSec) : null,
-        heapUsedBytes: heapUsed != null ? Math.round(heapUsed) : null,
-        heapMaxBytes: heapMax != null ? Math.round(heapMax) : null,
-        threads: threadCount != null ? Math.round(threadCount) : null,
-        infoJson: info ? JSON.stringify(info) : null,
-        updatedAt: new Date().toISOString(),
-      },
-    })
-    .run();
 }
 
 async function checkOne(url: string): Promise<{
@@ -113,6 +59,59 @@ async function checkOne(url: string): Promise<{
   }
 }
 
+async function enrichRuntime(serverId: number, base: string) {
+  const info = await fetchJson<Record<string, any>>(`${base}/actuator/info`);
+  const memUsed = await fetchJson<{ measurements?: Array<{ value: number }> }>(
+    `${base}/actuator/metrics/jvm.memory.used`,
+  );
+  const memMax = await fetchJson<{ measurements?: Array<{ value: number }> }>(
+    `${base}/actuator/metrics/jvm.memory.max`,
+  );
+  const uptime = await fetchJson<{ measurements?: Array<{ value: number }> }>(
+    `${base}/actuator/metrics/process.uptime`,
+  );
+  const threads = await fetchJson<{ measurements?: Array<{ value: number }> }>(
+    `${base}/actuator/metrics/jvm.threads.live`,
+  );
+
+  const heapUsed = memUsed?.measurements?.[0]?.value ?? null;
+  const heapMax = memMax?.measurements?.[0]?.value ?? null;
+  const uptimeSec = uptime?.measurements?.[0]?.value ?? null;
+  const threadCount = threads?.measurements?.[0]?.value ?? null;
+
+  const version =
+    info?.build?.version ?? info?.app?.version ?? info?.git?.build?.version ?? null;
+  const build = info?.build?.name ?? info?.app?.name ?? null;
+  const gitCommit = info?.git?.commit?.id ?? info?.git?.commit ?? null;
+
+  const values = {
+    version,
+    build,
+    gitCommit,
+    uptimeSec: uptimeSec != null ? Math.round(uptimeSec) : null,
+    heapUsedBytes: heapUsed != null ? Math.round(heapUsed) : null,
+    heapMaxBytes: heapMax != null ? Math.round(heapMax) : null,
+    threads: threadCount != null ? Math.round(threadCount) : null,
+    infoJson: info ? JSON.stringify(info) : null,
+    updatedAt: new Date().toISOString(),
+  };
+
+  const existing = db
+    .select()
+    .from(schema.instanceRuntime)
+    .all()
+    .find((r) => r.serverId === serverId);
+
+  if (existing) {
+    db.update(schema.instanceRuntime)
+      .set(values)
+      .where(eq(schema.instanceRuntime.serverId, serverId))
+      .run();
+  } else {
+    db.insert(schema.instanceRuntime).values({ serverId, ...values }).run();
+  }
+}
+
 function recordStart(): number {
   const res = db
     .insert(schema.syncRuns)
@@ -135,23 +134,29 @@ function recordFinish(id: number, r: Result) {
 
 export async function syncHealth(): Promise<Result> {
   const runId = recordStart();
-  const base = process.env.CENTRAL_BASE_URL ?? "http://localhost";
   let total = 0;
 
   try {
-    const centrals = db
+    const servers = db
       .select()
-      .from(schema.instances)
-      .where(and(eq(schema.instances.kind, "central_instance"), eq(schema.instances.active, true)))
+      .from(schema.monitoredServers)
+      .where(
+        and(
+          inArray(schema.monitoredServers.kind, ["central", "filial"]),
+          eq(schema.monitoredServers.active, true),
+        ),
+      )
       .all();
 
-    for (const inst of centrals) {
-      if (!inst.port) continue;
-      const url = `${base}:${inst.port}/actuator/health`;
+    for (const s of servers) {
+      if (!s.ip || !s.appPort) continue;
+      const base = `http://${s.ip}:${s.appPort}`;
+      const url = `${base}/actuator/health`;
       const result = await checkOne(url);
       db.insert(schema.healthChecks)
         .values({
-          instanceId: inst.id,
+          instanceId: null,
+          serverId: s.id,
           status: result.status,
           httpCode: result.httpCode ?? null,
           latencyMs: result.latencyMs,
@@ -161,7 +166,7 @@ export async function syncHealth(): Promise<Result> {
       total += 1;
 
       if (result.status === "up") {
-        await enrichRuntime(inst.id, `${base}:${inst.port}`);
+        await enrichRuntime(s.id, base);
       }
     }
 
