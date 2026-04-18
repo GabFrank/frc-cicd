@@ -11,6 +11,7 @@ const LINKS = [
   { href: "/dashboard/central", label: "Central" },
   { href: "/dashboard/replicacion", label: "Replicación" },
   { href: "/dashboard/alertas", label: "Alertas" },
+  { href: "/dashboard/notificaciones", label: "Notificaciones" },
   { href: "/dashboard/admin", label: "Admin" },
 ];
 

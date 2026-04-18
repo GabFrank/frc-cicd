@@ -9,6 +9,21 @@ Documentación, runbooks y scripts para la implementación de CI/CD en los 4 com
 | **desktop** | `GabFrank/frc-sistemas-integrados-angular` | Angular 15 + Electron 22 |
 | **mobile** | `GabFrank/frc-mobile` | Angular 15 + Ionic 6 + Capacitor 5 |
 
+## Stack dashboard + WhatsApp (Docker)
+
+Desde la raíz de **frc-cicd** (Compose v2.20+):
+
+```bash
+cp dashboard/.env.example dashboard/.env
+cp notifications/.env.example notifications/.env
+# editar dashboard/.env (GITHUB_PAT, SESSION_SECRET, AUTH_*, CENTRAL_BASE_URL, …)
+# editar notifications/.env (EVOLUTION_*, N8N_*)
+
+docker compose --env-file dashboard/.env --env-file notifications/.env up -d --build
+```
+
+Incluye `dashboard/` (Next + jobs + SQLite) y `notifications/` (Evolution API + n8n). Red Docker: `frc-net`. Detalle: [notifications/README.md](notifications/README.md) y [dashboard/README.md](dashboard/README.md).
+
 ## Contenido
 
 - **`plan-implementacion-cicd.md`** — Plan maestro de implementación CI/CD

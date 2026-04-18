@@ -5,6 +5,7 @@ import { syncGithub } from "./sync-github";
 import { syncHealth } from "./sync-health";
 import { syncReplication } from "./sync-replication";
 import { evaluateAlerts } from "./evaluate-alerts";
+import { notifyAlerts } from "./notify-alerts";
 
 const SYNC_GITHUB_MS = Number(process.env.SYNC_GITHUB_INTERVAL_MS ?? 300_000);
 const SYNC_HEALTH_MS = Number(process.env.SYNC_HEALTH_INTERVAL_MS ?? 60_000);
@@ -30,6 +31,11 @@ async function safeRun<T>(name: string, fn: () => Promise<T>) {
   }
 }
 
+async function alertsPipeline() {
+  await evaluateAlerts();
+  await notifyAlerts();
+}
+
 async function main() {
   console.log("[runner] starting...", {
     SYNC_GITHUB_MS,
@@ -41,12 +47,12 @@ async function main() {
   await safeRun("sync-github", syncGithub);
   await safeRun("sync-health", syncHealth);
   await safeRun("sync-replication", syncReplication);
-  await safeRun("evaluate-alerts", evaluateAlerts);
+  await safeRun("alerts-pipeline", alertsPipeline);
 
   setInterval(() => void safeRun("sync-github", syncGithub), SYNC_GITHUB_MS);
   setInterval(() => void safeRun("sync-health", syncHealth), SYNC_HEALTH_MS);
   setInterval(() => void safeRun("sync-replication", syncReplication), SYNC_REPLICATION_MS);
-  setInterval(() => void safeRun("evaluate-alerts", evaluateAlerts), EVAL_ALERTS_MS);
+  setInterval(() => void safeRun("alerts-pipeline", alertsPipeline), EVAL_ALERTS_MS);
 }
 
 main().catch((err) => {

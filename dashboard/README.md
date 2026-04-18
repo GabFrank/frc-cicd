@@ -82,24 +82,22 @@ deploy/        nginx.conf.example, backup.sh
 
 Asumido: mismo droplet donde corre el backend central (Ubuntu, systemd, `nginx` nuevo a instalar).
 
+**Opción A — solo dashboard** (sin WhatsApp): copiar solo `frc-cicd/dashboard/` y `docker compose up` dentro de esa carpeta.
+
+**Opción B — dashboard + Evolution + n8n**: clonar el repo **frc-cicd** completo y usar el compose raíz:
+
 ```bash
-# 1. Clonar / copiar dashboard/ al droplet
+# 1. Clonar frc-cicd en el droplet
 ssh deploy@droplet
-mkdir -p /opt/frc-dashboard && cd /opt/frc-dashboard
-# copiar contenido de frc-cicd/dashboard/ aquí
+mkdir -p /opt/frc-cicd && cd /opt/frc-cicd
+# copiar repo (incluye dashboard/ y notifications/)
 
-# 2. .env
-cat > .env <<'EOF'
-GITHUB_PAT=ghp_…
-SESSION_SECRET=…
-AUTH_USER=admin
-AUTH_PASS=…
-CENTRAL_BASE_URL=http://host.docker.internal
-EOF
-chmod 600 .env
+# 2. Variables (dashboard + notifications)
+cp notifications/.env.example notifications/.env
+# editar GITHUB_PAT, SESSION_SECRET, AUTH_*, CENTRAL_BASE_URL, EVOLUTION_*, N8N_*
 
-# 3. Build + up
-docker compose up -d --build
+# 3. Build + up (desde la raíz frc-cicd)
+docker compose --env-file dashboard/.env --env-file notifications/.env up -d --build
 docker compose logs -f jobs
 
 # 4. nginx + TLS (una sola vez)
@@ -128,7 +126,7 @@ echo "15 3 * * * root /usr/local/bin/frc-dash-backup.sh" | sudo tee /etc/cron.d/
 ## Escalamiento futuro (fuera de MVP)
 
 - **F6** — Heartbeat custom desde filiales + lectura de `pg_stat_subscription` para estado de replicación. Requiere endpoint `POST /api/ingest/filial` con HMAC y 1 línea extra en `check-update.sh`.
-- **F8** — Integración con **n8n** + **Evolution API**: workflow que pollea `/api/data/alertas` y envía WhatsApp según severidad. n8n corre como contenedor adicional del mismo compose. El dashboard **no** envía WhatsApp directamente.
+- **F8 (implementado)** — **Evolution API** + **n8n** opcional: carpeta [`../notifications/`](../notifications/) con compose propio; orquestación desde la raíz del repo con [`docker-compose.yml`](../docker-compose.yml) (`include`). El job `notify-alerts` (tras `evaluate-alerts`) envía por WhatsApp según reglas en DB; `N8N_ALERT_WEBHOOK_URL` dispara un webhook adicional. UI: `/dashboard/notificaciones`.
 - **Management**: disparar deploys, aprobar promociones, rollback desde la UI. Fase posterior con permisos granulares y audit log.
 
 ## Seguridad

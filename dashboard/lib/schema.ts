@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { integer, primaryKey, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 export const components = sqliteTable("components", {
   id: integer("id").primaryKey({ autoIncrement: true }),
@@ -225,6 +225,72 @@ export const replicationCheckResults = sqliteTable("replication_check_results", 
   checkedAt: text("checked_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
 
+export const notificationTargets = sqliteTable("notification_targets", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  name: text("name").notNull(),
+  kind: text("kind").notNull(),
+  jid: text("jid").notNull(),
+  active: integer("active", { mode: "boolean" }).notNull().default(true),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+});
+
+export const notificationRules = sqliteTable("notification_rules", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  targetId: integer("target_id")
+    .notNull()
+    .references(() => notificationTargets.id, { onDelete: "cascade" }),
+  minSeverity: text("min_severity").notNull().default("warn"),
+  alertKindsCsv: text("alert_kinds_csv"),
+  empresaFilter: text("empresa_filter"),
+  serverIdsCsv: text("server_ids_csv"),
+  quietStart: text("quiet_start"),
+  quietEnd: text("quiet_end"),
+  quietBypassCritical: integer("quiet_bypass_critical", { mode: "boolean" }).notNull().default(true),
+  resendIntervalMin: integer("resend_interval_min").notNull().default(60),
+  active: integer("active", { mode: "boolean" }).notNull().default(true),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+});
+
+export const notificationLog = sqliteTable("notification_log", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  alertId: integer("alert_id")
+    .notNull()
+    .references(() => alerts.id, { onDelete: "cascade" }),
+  alertFingerprint: text("alert_fingerprint").notNull(),
+  targetId: integer("target_id")
+    .notNull()
+    .references(() => notificationTargets.id, { onDelete: "cascade" }),
+  ruleId: integer("rule_id")
+    .notNull()
+    .references(() => notificationRules.id, { onDelete: "cascade" }),
+  eventKind: text("event_kind").notNull(),
+  status: text("status").notNull(),
+  reason: text("reason"),
+  evolutionMessageId: text("evolution_message_id"),
+  httpCode: integer("http_code"),
+  errorMessage: text("error_message"),
+  sentAt: text("sent_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+});
+
+export const notificationState = sqliteTable(
+  "notification_state",
+  {
+    alertFingerprint: text("alert_fingerprint").notNull(),
+    targetId: integer("target_id")
+      .notNull()
+      .references(() => notificationTargets.id, { onDelete: "cascade" }),
+    lastSentAt: text("last_sent_at").notNull(),
+    lastSeverity: text("last_severity").notNull(),
+    lastEventKind: text("last_event_kind").notNull(),
+    lastAlertLastSeenAt: text("last_alert_last_seen_at"),
+    lastPayloadHash: text("last_payload_hash"),
+    resolvedNotifiedAt: text("resolved_notified_at"),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.alertFingerprint, t.targetId] }),
+  }),
+);
+
 export type Component = typeof components.$inferSelect;
 export type Channel = typeof channels.$inferSelect;
 export type Instance = typeof instances.$inferSelect;
@@ -235,3 +301,8 @@ export type Deployment = typeof deployments.$inferSelect;
 export type HealthCheck = typeof healthChecks.$inferSelect;
 export type Alert = typeof alerts.$inferSelect;
 export type SyncRun = typeof syncRuns.$inferSelect;
+export type NotificationTarget = typeof notificationTargets.$inferSelect;
+export type NotificationRule = typeof notificationRules.$inferSelect;
+export type NotificationLogRow = typeof notificationLog.$inferSelect;
+export type NotificationStateRow = typeof notificationState.$inferSelect;
+export type MonitoredServer = typeof monitoredServers.$inferSelect;

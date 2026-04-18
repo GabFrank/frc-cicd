@@ -27,3 +27,40 @@ server {
         proxy_read_timeout 60s;
     }
 }
+
+# --- Opcional: n8n (127.0.0.1:5678) y Evolution Manager (127.0.0.1:8090) ---
+# Sustituir *.frc.tld y TLS; restringir Evolution por IP de oficina.
+
+# server {
+#     listen 443 ssl http2;
+#     server_name n8n.frc.tld;
+#     # ssl_certificate ... / ssl_certificate_key ...
+#     auth_basic "n8n";
+#     auth_basic_user_file /etc/nginx/.htpasswd-n8n;
+#     location / {
+#         proxy_pass http://127.0.0.1:5678;
+#         proxy_http_version 1.1;
+#         proxy_set_header Upgrade $http_upgrade;
+#         proxy_set_header Connection "upgrade";
+#         proxy_set_header Host $host;
+#         proxy_set_header X-Real-IP $remote_addr;
+#         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+#         proxy_set_header X-Forwarded-Proto $scheme;
+#     }
+# }
+
+# server {
+#     listen 443 ssl http2;
+#     server_name evolution.frc.tld;
+#     # ssl_certificate ... / ssl_certificate_key ...
+#     allow 203.0.113.0/24;
+#     deny all;
+#     location / {
+#         proxy_pass http://127.0.0.1:8090;
+#         proxy_http_version 1.1;
+#         proxy_set_header Host $host;
+#         proxy_set_header X-Real-IP $remote_addr;
+#         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+#         proxy_set_header X-Forwarded-Proto $scheme;
+#     }
+# }

@@ -1,0 +1,189 @@
+# Stack completo: dashboard + jobs + migrate + Evolution API + n8n.
+# Compose único (sin `include:`) para compatibilidad con versiones antiguas.
+#
+#   docker compose --env-file notifications/.env up -d --build
+#
+# Variables sensibles: ver notifications/.env.example
+
+name: frc-cicd
+
+networks:
+  default:
+    name: frc-net
+
+services:
+  dashboard:
+    build: ./dashboard
+    image: frc-dashboard:latest
+    container_name: frc-dashboard
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - DB_PATH=/data/dash.db
+      - GITHUB_PAT=${GITHUB_PAT}
+      - SESSION_SECRET=${SESSION_SECRET}
+      - AUTH_USER=${AUTH_USER}
+      - AUTH_PASS=${AUTH_PASS}
+      - CENTRAL_BASE_URL=${CENTRAL_BASE_URL:-http://host.docker.internal}
+      - EVOLUTION_API_URL=${EVOLUTION_API_URL:-http://evolution-api:8080}
+      - EVOLUTION_API_KEY=${EVOLUTION_API_KEY:-}
+      - EVOLUTION_INSTANCE_NAME=${EVOLUTION_INSTANCE_NAME:-frc-alertas}
+      - N8N_ALERT_WEBHOOK_URL=${N8N_ALERT_WEBHOOK_URL:-}
+      - DASHBOARD_PUBLIC_URL=${DASHBOARD_PUBLIC_URL:-http://127.0.0.1:3000}
+      - WHATSAPP_TZ=${WHATSAPP_TZ:-America/Asuncion}
+    volumes:
+      - dash-data:/data
+    ports:
+      - "127.0.0.1:3000:3000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3000/api/data/overview"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  jobs:
+    build: ./dashboard
+    image: frc-dashboard:latest
+    container_name: frc-dashboard-jobs
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - DB_PATH=/data/dash.db
+      - GITHUB_PAT=${GITHUB_PAT}
+      - CENTRAL_BASE_URL=${CENTRAL_BASE_URL:-http://host.docker.internal}
+      - SYNC_GITHUB_INTERVAL_MS=${SYNC_GITHUB_INTERVAL_MS:-300000}
+      - SYNC_HEALTH_INTERVAL_MS=${SYNC_HEALTH_INTERVAL_MS:-60000}
+      - SYNC_REPLICATION_INTERVAL_MS=${SYNC_REPLICATION_INTERVAL_MS:-120000}
+      - EVALUATE_ALERTS_INTERVAL_MS=${EVALUATE_ALERTS_INTERVAL_MS:-60000}
+      - EVOLUTION_API_URL=${EVOLUTION_API_URL:-http://evolution-api:8080}
+      - EVOLUTION_API_KEY=${EVOLUTION_API_KEY:-}
+      - EVOLUTION_INSTANCE_NAME=${EVOLUTION_INSTANCE_NAME:-frc-alertas}
+      - N8N_ALERT_WEBHOOK_URL=${N8N_ALERT_WEBHOOK_URL:-}
+      - DASHBOARD_PUBLIC_URL=${DASHBOARD_PUBLIC_URL:-http://127.0.0.1:3000}
+      - WHATSAPP_TZ=${WHATSAPP_TZ:-America/Asuncion}
+      - NOTIFY_ALERTS_ENABLED=${NOTIFY_ALERTS_ENABLED:-true}
+    volumes:
+      - dash-data:/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: ["npx", "tsx", "jobs/runner.ts"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      evolution-api:
+        condition: service_started
+
+  migrate:
+    build: ./dashboard
+    image: frc-dashboard:latest
+    container_name: frc-dashboard-migrate
+    environment:
+      - DB_PATH=/data/dash.db
+    volumes:
+      - dash-data:/data
+    command: ["npx", "tsx", "lib/migrate.ts"]
+    restart: "no"
+
+  evolution-postgres:
+    image: postgres:16-alpine
+    container_name: frc-evolution-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: evolution
+      POSTGRES_PASSWORD: ${EVOLUTION_PG_PASSWORD:?set EVOLUTION_PG_PASSWORD}
+      POSTGRES_DB: evolution
+    volumes:
+      - evolution-pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U evolution -d evolution"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  evolution-redis:
+    image: redis:7-alpine
+    container_name: frc-evolution-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - evolution-redis-data:/data
+
+  evolution-api:
+    image: atendai/evolution-api:v2.1.1
+    container_name: frc-evolution-api
+    restart: unless-stopped
+    depends_on:
+      evolution-postgres:
+        condition: service_healthy
+      evolution-redis:
+        condition: service_started
+    ports:
+      - "127.0.0.1:8090:8080"
+    environment:
+      SERVER_URL: ${EVOLUTION_PUBLIC_URL:-http://127.0.0.1:8090}
+      SERVER_PORT: "8080"
+      AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY:?set EVOLUTION_API_KEY}
+      DATABASE_ENABLED: "true"
+      DATABASE_PROVIDER: postgresql
+      DATABASE_CONNECTION_URI: postgresql://evolution:${EVOLUTION_PG_PASSWORD}@evolution-postgres:5432/evolution?schema=public
+      DATABASE_SAVE_DATA_INSTANCE: "true"
+      CACHE_REDIS_ENABLED: "true"
+      CACHE_REDIS_URI: redis://evolution-redis:6379/0
+      CACHE_REDIS_PREFIX_KEY: evolution
+      CACHE_LOCAL_ENABLED: "false"
+      DEL_INSTANCE: "false"
+    volumes:
+      - evolution-instances:/evolution/instances
+
+  n8n-postgres:
+    image: postgres:16-alpine
+    container_name: frc-n8n-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: n8n
+      POSTGRES_PASSWORD: ${N8N_PG_PASSWORD:?set N8N_PG_PASSWORD}
+      POSTGRES_DB: n8n
+    volumes:
+      - n8n-pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U n8n -d n8n"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:latest
+    container_name: frc-n8n
+    restart: unless-stopped
+    depends_on:
+      n8n-postgres:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:5678:5678"
+    environment:
+      N8N_HOST: 0.0.0.0
+      N8N_PORT: "5678"
+      N8N_PROTOCOL: http
+      WEBHOOK_URL: ${N8N_PUBLIC_URL:-http://127.0.0.1:5678/}
+      GENERIC_TIMEZONE: ${WHATSAPP_TZ:-America/Asuncion}
+      DB_TYPE: postgresdb
+      DB_POSTGRESDB_HOST: n8n-postgres
+      DB_POSTGRESDB_PORT: "5432"
+      DB_POSTGRESDB_DATABASE: n8n
+      DB_POSTGRESDB_USER: n8n
+      DB_POSTGRESDB_PASSWORD: ${N8N_PG_PASSWORD}
+      N8N_BASIC_AUTH_ACTIVE: "true"
+      N8N_BASIC_AUTH_USER: ${N8N_AUTH_USER:-admin}
+      N8N_BASIC_AUTH_PASSWORD: ${N8N_AUTH_PASS:?set N8N_AUTH_PASS}
+    volumes:
+      - n8n-data:/home/node/.n8n
+
+volumes:
+  dash-data:
+  evolution-pg-data:
+  evolution-redis-data:
+  evolution-instances:
+  n8n-pg-data:
+  n8n-data:

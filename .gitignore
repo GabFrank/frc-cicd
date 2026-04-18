@@ -1,10 +1,16 @@
 # Sensitive data — never commit
 .env
+notifications/.env
 *.pem
 *.key
 *.pfx
 *.jks
 *.pepk
+
+# Dashboard runtime artifacts (contienen credentials en plaintext)
+dashboard/config-snapshot.json
+dashboard/dev.db*
+frc-dashboard-config-*.json
 
 # Claude Code local config (contains SSH passwords in permission rules)
 .claude/settings.local.json
