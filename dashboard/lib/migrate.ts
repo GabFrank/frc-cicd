@@ -176,13 +176,48 @@ function apply0002() {
 }
 
 function cleanupStalePgRows() {
-  // Filas en pg_cluster_status / pg_databases con server_id IS NULL son legacy
-  // del modelo viejo (cluster_port era PK). Confunden los lookups por server_id
-  // y muestran datos cruzados entre servers que comparten puerto.
+  // Filas con server_id IS NULL: legacy del modelo viejo (cluster_port era PK).
   const r1 = sqlite.prepare(`DELETE FROM pg_cluster_status WHERE server_id IS NULL`).run();
   const r2 = sqlite.prepare(`DELETE FROM pg_databases WHERE server_id IS NULL`).run();
-  if (r1.changes > 0) console.log(`[migrate] cleanup pg_cluster_status legacy: ${r1.changes}`);
-  if (r2.changes > 0) console.log(`[migrate] cleanup pg_databases legacy: ${r2.changes}`);
+  if (r1.changes > 0) console.log(`[migrate] cleanup pg_cluster_status legacy NULL: ${r1.changes}`);
+  if (r2.changes > 0) console.log(`[migrate] cleanup pg_databases legacy NULL: ${r2.changes}`);
+
+  // Filas con server_id huérfano (apuntan a un monitored_servers.id que ya no existe).
+  // Ocurren cuando el registry se re-registra: los IDs nuevos no coinciden con los viejos
+  // y las filas viejas quedan apuntando al vacío, generando alertas zombie.
+  const o1 = sqlite.prepare(`
+    DELETE FROM pg_cluster_status
+    WHERE server_id IS NOT NULL
+      AND server_id NOT IN (SELECT id FROM monitored_servers)
+  `).run();
+  const o2 = sqlite.prepare(`
+    DELETE FROM pg_databases
+    WHERE server_id IS NOT NULL
+      AND server_id NOT IN (SELECT id FROM monitored_servers)
+  `).run();
+  const o3 = sqlite.prepare(`
+    DELETE FROM health_checks
+    WHERE server_id IS NOT NULL
+      AND server_id NOT IN (SELECT id FROM monitored_servers)
+  `).run();
+  const o4 = sqlite.prepare(`
+    DELETE FROM instance_runtime
+    WHERE server_id IS NOT NULL
+      AND server_id NOT IN (SELECT id FROM monitored_servers)
+  `).run();
+  if (o1.changes > 0) console.log(`[migrate] cleanup pg_cluster_status orphan: ${o1.changes}`);
+  if (o2.changes > 0) console.log(`[migrate] cleanup pg_databases orphan: ${o2.changes}`);
+  if (o3.changes > 0) console.log(`[migrate] cleanup health_checks orphan: ${o3.changes}`);
+  if (o4.changes > 0) console.log(`[migrate] cleanup instance_runtime orphan: ${o4.changes}`);
+
+  // Auto-resolver alertas con server_id huérfano (zombies por reseed del registry).
+  const a1 = sqlite.prepare(`
+    UPDATE alerts SET resolved_at = datetime('now')
+    WHERE resolved_at IS NULL
+      AND server_id IS NOT NULL
+      AND server_id NOT IN (SELECT id FROM monitored_servers)
+  `).run();
+  if (a1.changes > 0) console.log(`[migrate] auto-resolve alertas con server_id huérfano: ${a1.changes}`);
 }
 
 function cleanupZombieAlerts() {

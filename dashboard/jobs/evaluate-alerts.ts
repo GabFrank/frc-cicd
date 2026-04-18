@@ -128,20 +128,21 @@ export async function evaluateAlerts() {
       }
     }
 
-    // Cluster PG por server
+    // Cluster PG por server. Skip filas huérfanas (server_id que no existe)
+    // para no generar alertas zombie.
     const pgClusters = db.select().from(schema.pgClusterStatus).all();
     for (const cluster of pgClusters) {
-      if (cluster.status !== "up" && cluster.serverId) {
-        const srv = serversById.get(cluster.serverId);
-        candidates.push({
-          fingerprint: `pg-cluster-down:srv:${cluster.serverId}`,
-          severity: "critical",
-          kind: "pg_cluster_down",
-          serverId: cluster.serverId,
-          title: `Cluster PG ${srv?.nombre ?? cluster.label} DOWN`,
-          detail: cluster.errorMessage ?? undefined,
-        });
-      }
+      if (cluster.status === "up" || !cluster.serverId) continue;
+      const srv = serversById.get(cluster.serverId);
+      if (!srv) continue; // huérfano: el server fue borrado del registry
+      candidates.push({
+        fingerprint: `pg-cluster-down:srv:${cluster.serverId}`,
+        severity: "critical",
+        kind: "pg_cluster_down",
+        serverId: cluster.serverId,
+        title: `Cluster PG ${srv.nombre} DOWN`,
+        detail: cluster.errorMessage ?? undefined,
+      });
     }
 
     // Replicación esperada vs encontrada
