@@ -35,6 +35,8 @@ export function ExpectedReplicationManager({ serverId }: { serverId: number }) {
     notes: "",
   });
   const [error, setError] = useState<string | null>(null);
+  const [discovering, setDiscovering] = useState(false);
+  const [discoverMsg, setDiscoverMsg] = useState<string | null>(null);
 
   const load = async () => {
     const [a, b] = await Promise.all([
@@ -79,16 +81,47 @@ export function ExpectedReplicationManager({ serverId }: { serverId: number }) {
     load();
   };
 
+  const onDiscover = async () => {
+    setDiscovering(true);
+    setDiscoverMsg(null);
+    setError(null);
+    try {
+      const res = await fetch(`/api/admin/servers/${serverId}/discover`, { method: "POST" });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.error ?? `${res.status}`);
+      setDiscoverMsg(`✓ ${j.discovered} encontrados · ${j.inserted} nuevos · ${j.updated} actualizados`);
+      load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setDiscovering(false);
+    }
+  };
+
   const inputCls = "w-full rounded bg-bg-raised border border-border-default px-2 py-1.5 text-sm";
   const labelCls = "block text-xs uppercase text-text-muted";
 
   return (
     <section className="space-y-4">
-      <div>
-        <h2 className="text-xl font-bold">Replicación esperada</h2>
-        <p className="text-sm text-text-muted">
-          Pub/sub/slots que el dashboard debe encontrar activos en este servidor.
-        </p>
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h2 className="text-xl font-bold">Replicación esperada</h2>
+          <p className="text-sm text-text-muted">
+            Pub/sub/slots que el dashboard debe encontrar activos en este servidor.
+          </p>
+        </div>
+        <div className="flex flex-col items-end gap-1">
+          <button
+            type="button"
+            onClick={onDiscover}
+            disabled={discovering}
+            className="rounded bg-status-info/20 border border-status-info/40 px-3 py-1.5 text-sm hover:bg-status-info/30 disabled:opacity-50"
+            title="Conecta al PG del servidor y registra todas las publicaciones, subscripciones y slots existentes"
+          >
+            {discovering ? "Descubriendo…" : "🔍 Descubrir replicación"}
+          </button>
+          {discoverMsg && <span className="text-xs text-status-ok">{discoverMsg}</span>}
+        </div>
       </div>
 
       <div className="card">
