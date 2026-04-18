@@ -1,7 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import { usePollJson } from "./PollQuery";
+import { AlertDialog } from "./AlertDialog";
 import { timeAgo } from "@/lib/utils";
 
 interface Alert {
@@ -37,6 +39,7 @@ function severityPill(s: string): string {
 
 export function AlertSidebar({ heightClass = "h-[calc(100vh-9rem)]", maxItems }: { heightClass?: string; maxItems?: number }) {
   const { data, isLoading } = usePollJson<AlertData>("/api/data/alertas", ["sidebar-alertas"]);
+  const [openId, setOpenId] = useState<number | null>(null);
 
   if (isLoading) {
     return (
@@ -85,7 +88,13 @@ export function AlertSidebar({ heightClass = "h-[calc(100vh-9rem)]", maxItems }:
           <div className="card text-text-muted text-sm">Sin alertas activas 🎉</div>
         )}
         {visible.map((a) => (
-          <div key={a.id} className={`card border ${severityClass(a.severity)} space-y-1`}>
+          <button
+            key={a.id}
+            type="button"
+            onClick={() => setOpenId(a.id)}
+            className={`card border ${severityClass(a.severity)} space-y-1 w-full text-left hover:brightness-125 transition`}
+            title="Click para gestionar"
+          >
             <div className="flex items-start justify-between gap-2">
               <div className="font-medium text-sm leading-tight">{a.title}</div>
               <span className={severityPill(a.severity)}>{a.severity}</span>
@@ -97,7 +106,7 @@ export function AlertSidebar({ heightClass = "h-[calc(100vh-9rem)]", maxItems }:
             <div className="text-[10px] text-text-muted">
               {timeAgo(a.lastSeenAt)} · 1ra: {timeAgo(a.firstSeenAt)}
             </div>
-          </div>
+          </button>
         ))}
         {overflow > 0 && (
           <Link
@@ -108,6 +117,11 @@ export function AlertSidebar({ heightClass = "h-[calc(100vh-9rem)]", maxItems }:
           </Link>
         )}
       </div>
+      <AlertDialog
+        alertId={openId}
+        open={openId != null}
+        onClose={() => setOpenId(null)}
+      />
     </aside>
   );
 }
