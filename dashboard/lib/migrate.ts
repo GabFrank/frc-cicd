@@ -175,6 +175,16 @@ function apply0002() {
   console.log("[migrate] 0002_notifications applied");
 }
 
+function cleanupStalePgRows() {
+  // Filas en pg_cluster_status / pg_databases con server_id IS NULL son legacy
+  // del modelo viejo (cluster_port era PK). Confunden los lookups por server_id
+  // y muestran datos cruzados entre servers que comparten puerto.
+  const r1 = sqlite.prepare(`DELETE FROM pg_cluster_status WHERE server_id IS NULL`).run();
+  const r2 = sqlite.prepare(`DELETE FROM pg_databases WHERE server_id IS NULL`).run();
+  if (r1.changes > 0) console.log(`[migrate] cleanup pg_cluster_status legacy: ${r1.changes}`);
+  if (r2.changes > 0) console.log(`[migrate] cleanup pg_databases legacy: ${r2.changes}`);
+}
+
 function cleanupZombieAlerts() {
   const r = sqlite.prepare(`
     UPDATE alerts SET resolved_at = datetime('now')
@@ -268,6 +278,7 @@ async function main() {
   await ensureRegistry();
 
   backfillServerIds();
+  cleanupStalePgRows();
   cleanupZombieAlerts();
 
   // Snapshot final de seguridad: si hay registry, guardar JSON ahora.

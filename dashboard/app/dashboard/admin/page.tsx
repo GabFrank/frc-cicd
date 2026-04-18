@@ -150,7 +150,17 @@ export default function AdminPage() {
                       {s.pgHost ?? "—"}:{s.pgPort ?? "?"}/{s.pgDatabase ?? "?"}
                       <br />
                       <span className="text-text-muted">
-                        {s.pgUser ?? "?"} {s.hasPassword ? "·🔑" : ""}
+                        {s.pgUser ?? "?"}{" "}
+                        {s.hasPassword ? (
+                          <span className="text-status-ok">🔑</span>
+                        ) : (
+                          <span
+                            className="text-status-err"
+                            title="Sin password configurado — PG conn fallará con SASL error"
+                          >
+                            ⚠ sin password
+                          </span>
+                        )}
                       </span>
                     </td>
                     <td>{s.sucursalId ?? "—"}</td>

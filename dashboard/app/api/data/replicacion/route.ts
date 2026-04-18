@@ -14,12 +14,17 @@ export async function GET() {
   const sucursalesRows = db.select().from(schema.sucursales).all();
 
   const checkMap = new Map(checks.map((c) => [c.expectedId, c]));
-  const clusterByPort = new Map(clusterStatus.map((c) => [c.clusterPort, c]));
+  // Lookup por server_id (no por cluster_port) — varios servers pueden compartir
+  // pg_port (ej. bodega/farmacia/alpha en 5551). El cluster_port en pg_cluster_status
+  // puede ser un offset virtual cuando hubo colisión.
+  const clusterByServer = new Map(
+    clusterStatus.filter((c) => c.serverId != null).map((c) => [c.serverId!, c]),
+  );
 
   const data = servers.map((s) => {
     const ownExpected = expected.filter((e) => e.serverId === s.id);
-    const ownDatabases = databases.filter((d) => d.clusterPort === (s.pgPort ?? 0) && d.name === s.pgDatabase);
-    const cluster = s.pgPort ? clusterByPort.get(s.pgPort) : null;
+    const ownDatabases = databases.filter((d) => d.serverId === s.id);
+    const cluster = clusterByServer.get(s.id) ?? null;
 
     return {
       id: s.id,
