@@ -37,16 +37,22 @@ export async function withClient<T>(
   opts: { host: string; port: number; user: string; password: string; database: string; statementTimeoutMs?: number },
   fn: (client: Client) => Promise<T>,
 ): Promise<T> {
-  const client = new Client({
+  // pg trata `password: ""` como falsy y cae a defaults.password (null), lo que
+  // rompe el handshake SASL con "client password must be a string". Solo pasamos
+  // password si es no-vacío; si está vacío, omitimos para soportar trust auth.
+  const config: Record<string, unknown> = {
     host: opts.host,
     port: opts.port,
     user: opts.user,
-    password: opts.password,
     database: opts.database,
     connectionTimeoutMillis: 4000,
     statement_timeout: opts.statementTimeoutMs ?? 4000,
     query_timeout: opts.statementTimeoutMs ?? 4000,
-  });
+  };
+  if (opts.password && opts.password.length > 0) {
+    config.password = opts.password;
+  }
+  const client = new Client(config);
   await client.connect();
   try {
     return await fn(client);
