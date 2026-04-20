@@ -91,6 +91,7 @@ export async function notifyAlerts() {
       const deliveries = matchDeliveries(alert, rules, targetsById, serverById);
       const server = alert.serverId != null ? serverById.get(alert.serverId) : undefined;
       const hash = alertPayloadHash(alert);
+      let anyDeliverySent = false;
 
       for (const { target, rule } of deliveries) {
         const key = `${alert.fingerprint}:${target.id}`;
@@ -223,6 +224,7 @@ export async function notifyAlerts() {
         items += 1;
 
         if (ok) {
+          anyDeliverySent = true;
           const sentAt = isoNow();
           db.insert(schema.notificationState)
             .values({
@@ -257,6 +259,16 @@ export async function notifyAlerts() {
             resolvedNotifiedAt: st?.resolvedNotifiedAt ?? null,
           });
         }
+      }
+
+      // Eventos informativos (github_*) son one-shot: tras notificar OK,
+      // marcar resuelta inmediatamente. No ocupan el sidebar; queda
+      // registro en notification_log / alerts histórico.
+      if (anyDeliverySent && alert.kind.startsWith("github_")) {
+        db.update(schema.alerts)
+          .set({ state: "resolved", resolvedAt: isoNow() })
+          .where(eq(schema.alerts.id, alert.id))
+          .run();
       }
     }
 
