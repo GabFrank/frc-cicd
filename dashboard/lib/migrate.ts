@@ -170,17 +170,18 @@ const ALERT_RULE_DEFAULTS: Array<{
   resolving_cycles: number;
   notes: string;
 }> = [
-  { kind: "filial_no_success", display_name: "Filial sin deployment exitoso", severity_default: "warn", pending_cycles: 1, resolving_cycles: 3, notes: "Ya es acumulativo" },
-  { kind: "filial_stale", display_name: "Filial sin update reciente", severity_default: "warn", pending_cycles: 1, resolving_cycles: 3, notes: ">2h warn, >12h critical" },
+  { kind: "filial_no_success", display_name: "Filial sin deployment exitoso", severity_default: "warn", pending_cycles: 3, resolving_cycles: 3, notes: "3 ciclos para evitar blip de red" },
+  { kind: "filial_stale", display_name: "Filial sin update reciente", severity_default: "warn", pending_cycles: 3, resolving_cycles: 3, notes: ">2h warn, >12h critical" },
   { kind: "filial_failure", display_name: "Filial con último deploy failure", severity_default: "critical", pending_cycles: 1, resolving_cycles: 3, notes: "Evento discreto" },
   { kind: "filial_rollback", display_name: "Filial con rollback detectado", severity_default: "critical", pending_cycles: 1, resolving_cycles: 3, notes: "Evento discreto" },
   { kind: "central_down", display_name: "Instancia central DOWN", severity_default: "critical", pending_cycles: 1, resolving_cycles: 3, notes: "health_fail=3 interno" },
-  { kind: "pg_cluster_down", display_name: "Cluster PG DOWN", severity_default: "critical", pending_cycles: 1, resolving_cycles: 3, notes: "" },
-  { kind: "replication_problem", display_name: "Replicación expected missing/inactive", severity_default: "warn", pending_cycles: 2, resolving_cycles: 3, notes: "Transición en sync" },
+  { kind: "pg_cluster_down", display_name: "Cluster PG DOWN", severity_default: "critical", pending_cycles: 2, resolving_cycles: 3, notes: "2 ciclos para tolerar restart breve" },
+  { kind: "replication_problem", display_name: "Replicación expected missing/inactive", severity_default: "warn", pending_cycles: 4, resolving_cycles: 3, notes: "4 ciclos — slots pueden parpadear" },
   { kind: "pg_connections_high", display_name: "Conexiones PG altas", severity_default: "warn", pending_cycles: 2, resolving_cycles: 3, notes: "Deshabilitada por default (env threshold=0)" },
-  { kind: "replication_lag_high", display_name: "Lag WAL alto en slot", severity_default: "warn", pending_cycles: 2, resolving_cycles: 3, notes: ">100MB warn, >1GB critical" },
+  { kind: "replication_lag_high", display_name: "Lag WAL alto en slot", severity_default: "warn", pending_cycles: 3, resolving_cycles: 3, notes: ">100MB warn, >1GB critical" },
   { kind: "replication_apply_error", display_name: "Apply error en subscription", severity_default: "critical", pending_cycles: 2, resolving_cycles: 3, notes: "PG 15+ · transitorio en restart" },
-  { kind: "replication_stale", display_name: "Subscription sin mensajes recientes", severity_default: "warn", pending_cycles: 2, resolving_cycles: 3, notes: ">10min warn, >1h critical" },
+  { kind: "replication_stale", display_name: "Subscription sin mensajes recientes", severity_default: "warn", pending_cycles: 3, resolving_cycles: 3, notes: ">10min warn, >1h critical" },
+  { kind: "host_down", display_name: "Host DOWN (correlación)", severity_default: "critical", pending_cycles: 1, resolving_cycles: 3, notes: "Síntesis cuando ≥2 instancias del mismo IP caen simultáneo" },
 ];
 
 function apply0003() {
@@ -231,6 +232,30 @@ function apply0003() {
     if (res.changes > 0) seeded += 1;
   }
   if (seeded > 0) console.log(`[migrate] 0003: seed alert_rule_config (${seeded} kinds nuevos)`);
+}
+
+function apply0004() {
+  // Bump pending_cycles de kinds ruidosos si siguen en el default viejo.
+  // Idempotente: solo actualiza si el valor actual coincide con el default viejo
+  // (preserva ediciones manuales del user vía UI).
+  const bumps: Array<{ kind: string; from: number; to: number }> = [
+    { kind: "replication_problem", from: 2, to: 4 },
+    { kind: "filial_stale", from: 1, to: 3 },
+    { kind: "filial_no_success", from: 1, to: 3 },
+    { kind: "replication_stale", from: 2, to: 3 },
+    { kind: "replication_lag_high", from: 2, to: 3 },
+    { kind: "pg_cluster_down", from: 1, to: 2 },
+  ];
+  let bumped = 0;
+  const stmt = sqlite.prepare(
+    `UPDATE alert_rule_config SET pending_cycles = ?, updated_at = CURRENT_TIMESTAMP
+       WHERE kind = ? AND pending_cycles = ?`,
+  );
+  for (const b of bumps) {
+    const res = stmt.run(b.to, b.kind, b.from);
+    if (res.changes > 0) bumped += 1;
+  }
+  if (bumped > 0) console.log(`[migrate] 0004: bumped pending_cycles de ${bumped} kinds ruidosos`);
 }
 
 function apply0002() {
@@ -308,6 +333,7 @@ async function main() {
   apply0001();
   apply0002();
   apply0003();
+  apply0004();
 
   for (const c of COMPONENTS) {
     const existing = db.select().from(schema.components).where(eq(schema.components.slug, c.slug)).all();

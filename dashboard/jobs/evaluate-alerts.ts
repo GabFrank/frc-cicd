@@ -164,7 +164,8 @@ export async function evaluateAlerts() {
     }
 
     // Central down — threshold interno de 3 health_checks
-    if (ruleConfig.get("central_down")?.enabled !== false) {
+    // Gating C: si sync-health no está sano, no promover falsas caídas — la data está stale.
+    if (ruleConfig.get("central_down")?.enabled !== false && healthyDeps.health) {
       const centrales = servers.filter((s) => s.kind === "central");
       for (const c of centrales) {
         const recent = db
@@ -188,7 +189,8 @@ export async function evaluateAlerts() {
     }
 
     // PG cluster down
-    if (ruleConfig.get("pg_cluster_down")?.enabled !== false) {
+    // Gating C: sync-replication es el que escribe pg_cluster_status.
+    if (ruleConfig.get("pg_cluster_down")?.enabled !== false && healthyDeps.replication) {
       const pgClusters = db.select().from(schema.pgClusterStatus).all();
       for (const cluster of pgClusters) {
         if (cluster.status === "up" || !cluster.serverId) continue;
@@ -206,7 +208,8 @@ export async function evaluateAlerts() {
     }
 
     // Replicación esperada vs encontrada
-    if (ruleConfig.get("replication_problem")?.enabled !== false) {
+    // Gating C: los check_results viejos si sync-replication falló pueden dar falsos missing.
+    if (ruleConfig.get("replication_problem")?.enabled !== false && healthyDeps.replication) {
       const checkResults = db.select().from(schema.replicationCheckResults).all();
       const expected = db.select().from(schema.expectedReplication).all();
       const expectedById = new Map(expected.map((e) => [e.id, e]));
@@ -230,7 +233,7 @@ export async function evaluateAlerts() {
     }
 
     // Replication lag high — lee replication_check_results.extra_json para slots
-    if (ruleConfig.get("replication_lag_high")?.enabled !== false) {
+    if (ruleConfig.get("replication_lag_high")?.enabled !== false && healthyDeps.replication) {
       const expected = db.select().from(schema.expectedReplication).all();
       const expectedById = new Map(expected.map((e) => [e.id, e]));
       const checkResults = db.select().from(schema.replicationCheckResults).all();
@@ -255,8 +258,8 @@ export async function evaluateAlerts() {
     }
 
     // Replication apply error / stale — lee de replication_check_results para subs
-    if (ruleConfig.get("replication_apply_error")?.enabled !== false
-        || ruleConfig.get("replication_stale")?.enabled !== false) {
+    if ((ruleConfig.get("replication_apply_error")?.enabled !== false
+        || ruleConfig.get("replication_stale")?.enabled !== false) && healthyDeps.replication) {
       const expected = db.select().from(schema.expectedReplication).all();
       const expectedById = new Map(expected.map((e) => [e.id, e]));
       const checkResults = db.select().from(schema.replicationCheckResults).all();
@@ -316,6 +319,65 @@ export async function evaluateAlerts() {
             detail: `Threshold warn: ${PG_CONN_WARN}`,
           });
         }
+      }
+    }
+
+    // ========== B1: dep-tree suppression ==========
+    // Si pg_cluster_down firing para server X, los slots/subs de X aparecen missing/inactive
+    // como síntoma — no emitir alertas de replicación encima. Suprime el ruido aditivo.
+    const pgDownServers = new Set(
+      candidates.filter((c) => c.kind === "pg_cluster_down" && c.serverId != null).map((c) => c.serverId!),
+    );
+    const REPL_KINDS = new Set([
+      "replication_problem",
+      "replication_lag_high",
+      "replication_apply_error",
+      "replication_stale",
+    ]);
+    let suppressedDep = 0;
+    const afterDep = candidates.filter((c) => {
+      if (REPL_KINDS.has(c.kind) && c.serverId != null && pgDownServers.has(c.serverId)) {
+        suppressedDep += 1;
+        return false;
+      }
+      return true;
+    });
+    candidates.length = 0;
+    candidates.push(...afterDep);
+    if (suppressedDep > 0) {
+      console.log(`[evaluate-alerts] dep-tree: suprimidas ${suppressedDep} alertas de replicación por pg_cluster_down en mismo server`);
+    }
+
+    // ========== B2: correlación host-level ==========
+    // Si ≥2 central_down candidates comparten IP, reemplazar por 1 host_down:<ip>.
+    // Motivo: todas las instancias de un host caen juntas cuando el host/red falla.
+    if (ruleConfig.get("host_down")?.enabled !== false) {
+      const centralCands = candidates.filter((c) => c.kind === "central_down" && c.serverId != null);
+      const byIp = new Map<string, typeof centralCands>();
+      for (const c of centralCands) {
+        const srv = serversById.get(c.serverId!);
+        if (!srv?.ip) continue;
+        const list = byIp.get(srv.ip) ?? [];
+        list.push(c);
+        byIp.set(srv.ip, list);
+      }
+      for (const [ip, group] of byIp) {
+        if (group.length < 2) continue;
+        const names = group
+          .map((c) => serversById.get(c.serverId!)?.nombre ?? "?")
+          .join(", ");
+        const groupFps = new Set(group.map((c) => c.fingerprint));
+        const afterHost = candidates.filter((c) => !groupFps.has(c.fingerprint));
+        candidates.length = 0;
+        candidates.push(...afterHost);
+        candidates.push({
+          fingerprint: `host-down:ip:${ip}`,
+          severity: "critical",
+          kind: "host_down",
+          title: `Host ${ip} DOWN (${group.length} instancias)`,
+          detail: `Instancias caídas simultáneo: ${names}. Probable red o host.`,
+        });
+        console.log(`[evaluate-alerts] host correlation: ${group.length} central_down en ${ip} → host_down sintetizado`);
       }
     }
 
@@ -422,7 +484,7 @@ export async function evaluateAlerts() {
 
       // Mitigación sync-crash: no auto-resolve reglas que dependen de un job que falló
       const isReplKind = ["replication_problem", "replication_lag_high", "replication_apply_error", "replication_stale", "pg_cluster_down", "pg_connections_high"].includes(a.kind);
-      const isHealthKind = ["central_down"].includes(a.kind);
+      const isHealthKind = ["central_down", "host_down"].includes(a.kind);
       if (isReplKind && !healthyDeps.replication) continue;
       if (isHealthKind && !healthyDeps.health) continue;
 

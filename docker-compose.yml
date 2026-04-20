@@ -111,7 +111,7 @@ services:
       - evolution-redis-data:/data
 
   evolution-api:
-    image: atendai/evolution-api:v2.1.1
+    image: evoapicloud/evolution-api:v2.3.7
     container_name: frc-evolution-api
     restart: unless-stopped
     depends_on:
@@ -154,7 +154,7 @@ services:
       retries: 10
 
   n8n:
-    image: docker.n8n.io/n8nio/n8n:latest
+    image: docker.n8n.io/n8nio/n8n:1.75.2
     container_name: frc-n8n
     restart: unless-stopped
     depends_on:
