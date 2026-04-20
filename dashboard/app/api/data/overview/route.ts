@@ -195,6 +195,85 @@ export async function GET() {
     totalAlerts: activeAlerts.length,
   };
 
+  // Top slots por lag (para TV card 3)
+  const allItems = db.select().from(schema.expectedReplication).all();
+  const expByServer = new Map<number, typeof allItems>();
+  for (const e of allItems) {
+    const arr = expByServer.get(e.serverId) ?? [];
+    arr.push(e);
+    expByServer.set(e.serverId, arr);
+  }
+  const allResults = db.select().from(schema.replicationCheckResults).all();
+  const resultByExp = new Map(allResults.map((r) => [r.expectedId, r]));
+
+  const topLag = allItems
+    .map((e) => {
+      const res = resultByExp.get(e.id);
+      if (!res || res.status !== "found" || e.kind !== "slot") return null;
+      const extra = res.extraJson ? JSON.parse(res.extraJson) : null;
+      const lagBytes: number | null = extra?.lag_bytes ?? null;
+      const srv = servers.find((s) => s.id === e.serverId);
+      if (!srv) return null;
+      return {
+        expectedId: e.id,
+        slotName: e.name,
+        serverId: e.serverId,
+        serverName: srv.nombre,
+        active: !!res.active,
+        lagBytes,
+        checkedAt: res.checkedAt,
+      };
+    })
+    .filter((x): x is NonNullable<typeof x> => x !== null)
+    .sort((a, b) => (b.lagBytes ?? 0) - (a.lagBytes ?? 0))
+    .slice(0, 12);
+
+  // Últimos workflow runs (top 10 de todos los componentes)
+  const allRuns = db
+    .select()
+    .from(schema.workflowRuns)
+    .orderBy(desc(schema.workflowRuns.runStartedAt))
+    .limit(10)
+    .all();
+  const recentRuns = allRuns.map((r) => ({
+    id: r.id,
+    component: compById.get(r.componentId)?.slug ?? "?",
+    name: r.name,
+    status: r.status,
+    conclusion: r.conclusion,
+    headBranch: r.headBranch,
+    runStartedAt: r.runStartedAt,
+    htmlUrl: r.htmlUrl,
+  }));
+
+  // Últimos releases (top 8)
+  const latestReleases = db
+    .select()
+    .from(schema.releases)
+    .orderBy(desc(schema.releases.publishedAt))
+    .limit(8)
+    .all()
+    .map((r) => ({
+      id: r.id,
+      component: compById.get(r.componentId)?.slug ?? "?",
+      tagName: r.tagName,
+      channel: r.channel,
+      publishedAt: r.publishedAt,
+      htmlUrl: r.htmlUrl,
+    }));
+
+  // Drift rows — solo servers con drift
+  const driftRows = serverSummary
+    .filter((s) => s.versionDrift && s.channel)
+    .map((s) => ({
+      id: s.id,
+      nombre: s.nombre,
+      empresa: s.empresa,
+      channel: s.channel,
+      current: s.runtimeVersion,
+      expected: s.expectedTag,
+    }));
+
   return NextResponse.json({
     components,
     alerts: {
@@ -202,6 +281,10 @@ export async function GET() {
       critical: summary.criticalAlerts,
       warn: summary.warnAlerts,
     },
+    topLag,
+    recentRuns,
+    latestReleases,
+    driftRows,
     summary,
     serverSummary,
     lastSync,

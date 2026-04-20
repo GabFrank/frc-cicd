@@ -50,7 +50,15 @@ function severityPill(s: string): string {
   return "pill pill-info";
 }
 
-export function AlertSidebar({ heightClass = "h-[calc(100vh-9rem)]", maxItems }: { heightClass?: string; maxItems?: number }) {
+export function AlertSidebar({
+  heightClass = "h-[calc(100vh-9rem)]",
+  maxItems,
+  readOnly = false,
+}: {
+  heightClass?: string;
+  maxItems?: number;
+  readOnly?: boolean;
+}) {
   const { data, isLoading } = usePollJson<AlertData>("/api/data/alertas", ["sidebar-alertas"]);
   const [openId, setOpenId] = useState<number | null>(null);
 
@@ -112,32 +120,43 @@ export function AlertSidebar({ heightClass = "h-[calc(100vh-9rem)]", maxItems }:
         {total === 0 && (
           <div className="card text-text-muted text-sm">Sin alertas activas 🎉</div>
         )}
-        {visible.map((a) => (
-          <button
-            key={a.id}
-            type="button"
-            onClick={() => setOpenId(a.id)}
-            className={`card border ${a.state === "pending" ? "border-border-subtle bg-bg-raised opacity-70" : severityClass(a.severity)} space-y-1 w-full text-left hover:brightness-125 transition`}
-            title={`Click para gestionar${a.state ? ` · estado: ${a.state}` : ""}`}
-          >
-            <div className="flex items-start justify-between gap-2">
-              <div className="font-medium text-sm leading-tight">
-                {stateIcon(a.state) && <span className="mr-1">{stateIcon(a.state)}</span>}
-                {a.title}
+        {visible.map((a) => {
+          const cardCls = `card border ${a.state === "pending" ? "border-border-subtle bg-bg-raised opacity-70" : severityClass(a.severity)} space-y-1 w-full text-left ${readOnly ? "" : "hover:brightness-125 transition cursor-pointer"}`;
+          const content = (
+            <>
+              <div className="flex items-start justify-between gap-2">
+                <div className="font-medium text-sm leading-tight">
+                  {stateIcon(a.state) && <span className="mr-1">{stateIcon(a.state)}</span>}
+                  {a.title}
+                </div>
+                <span className={a.state === "pending" ? "pill pill-neutral" : severityPill(a.severity)}>
+                  {a.state === "pending" ? "pending" : a.severity}
+                </span>
               </div>
-              <span className={a.state === "pending" ? "pill pill-neutral" : severityPill(a.severity)}>
-                {a.state === "pending" ? "pending" : a.severity}
-              </span>
-            </div>
-            {a.instanceName && (
-              <div className="text-xs text-text-muted font-mono truncate">{a.instanceName}</div>
-            )}
-            {a.detail && <div className="text-xs text-text-secondary line-clamp-2">{a.detail}</div>}
-            <div className="text-[10px] text-text-muted">
-              {timeAgo(a.lastSeenAt)} · 1ra: {timeAgo(a.firstSeenAt)}
-            </div>
-          </button>
-        ))}
+              {a.instanceName && (
+                <div className="text-xs text-text-muted font-mono truncate">{a.instanceName}</div>
+              )}
+              {a.detail && <div className="text-xs text-text-secondary line-clamp-2">{a.detail}</div>}
+              <div className="text-[10px] text-text-muted">
+                {timeAgo(a.lastSeenAt)} · 1ra: {timeAgo(a.firstSeenAt)}
+              </div>
+            </>
+          );
+          if (readOnly) {
+            return <div key={a.id} className={cardCls}>{content}</div>;
+          }
+          return (
+            <button
+              key={a.id}
+              type="button"
+              onClick={() => setOpenId(a.id)}
+              className={cardCls}
+              title={`Click para gestionar${a.state ? ` · estado: ${a.state}` : ""}`}
+            >
+              {content}
+            </button>
+          );
+        })}
         {overflow > 0 && (
           <Link
             href="/dashboard/alertas"
@@ -147,11 +166,13 @@ export function AlertSidebar({ heightClass = "h-[calc(100vh-9rem)]", maxItems }:
           </Link>
         )}
       </div>
-      <AlertDialog
-        alertId={openId}
-        open={openId != null}
-        onClose={() => setOpenId(null)}
-      />
+      {!readOnly && (
+        <AlertDialog
+          alertId={openId}
+          open={openId != null}
+          onClose={() => setOpenId(null)}
+        />
+      )}
     </aside>
   );
 }

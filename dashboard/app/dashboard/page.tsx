@@ -1,10 +1,16 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import { usePollJson } from "@/components/PollQuery";
 import { AlertSidebar } from "@/components/AlertSidebar";
 import { SummaryCounters } from "@/components/SummaryCounters";
 import { ServerStatusCard, type ServerStatus } from "@/components/ServerStatusCard";
+import { ServerTileGrid } from "@/components/tv/ServerTileGrid";
+import { CicdFlowCard } from "@/components/tv/CicdFlowCard";
+import { ReplicationLagCard } from "@/components/tv/ReplicationLagCard";
+import { DriftMatrixCard } from "@/components/tv/DriftMatrixCard";
+import { Modal } from "@/components/Modal";
 import { statusToPill, timeAgo } from "@/lib/utils";
 
 interface Overview {
@@ -38,6 +44,10 @@ interface Overview {
     totalAlerts: number;
   };
   serverSummary: ServerStatus[];
+  topLag: any[];
+  recentRuns: any[];
+  latestReleases: any[];
+  driftRows: any[];
   lastSync: Array<{
     id: number;
     jobName: string;
@@ -49,103 +59,83 @@ interface Overview {
   }>;
 }
 
+function CardShell({
+  title,
+  count,
+  href,
+  children,
+}: {
+  title: string;
+  count?: string;
+  href?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="card-raised flex flex-col min-h-0">
+      <header className="flex items-baseline justify-between mb-2 shrink-0">
+        <h2 className="text-base font-semibold">{title}</h2>
+        <div className="flex items-center gap-2 text-xs">
+          {count && <span className="text-text-muted tabular-nums">{count}</span>}
+          {href && (
+            <Link href={href} className="text-status-info hover:underline">
+              ver →
+            </Link>
+          )}
+        </div>
+      </header>
+      <div className="flex-1 min-h-0 overflow-auto">{children}</div>
+    </section>
+  );
+}
+
 export default function OverviewPage() {
   const { data, isLoading, error } = usePollJson<Overview>("/api/data/overview", ["overview-v2"]);
+  const [selectedServer, setSelectedServer] = useState<ServerStatus | null>(null);
 
   if (isLoading && !data) return <div className="text-text-secondary">Cargando…</div>;
   if (error) return <div className="text-status-err">Error: {(error as Error).message}</div>;
   if (!data) return null;
 
-  const grouped = data.serverSummary.reduce<Record<string, ServerStatus[]>>((acc, s) => {
-    const key = s.empresa ?? "sin empresa";
-    acc[key] = acc[key] ?? [];
-    acc[key].push(s);
-    return acc;
-  }, {});
-
   return (
-    <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_320px] gap-6">
-      <div className="space-y-6 min-w-0">
+    <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_360px] gap-4">
+      <div className="space-y-4 min-w-0">
         <SummaryCounters s={data.summary} />
 
-        <section className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold">CI/CD</h2>
-            <Link href="/dashboard/cicd" className="text-xs text-status-info hover:underline">
-              ver detalle →
-            </Link>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {data.components.map((c) => (
-              <div key={c.id} className="card space-y-2">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <div className="font-semibold">{c.displayName}</div>
-                    <a
-                      href={`https://github.com/${c.repoFullName}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-xs text-text-muted hover:text-text-secondary"
-                    >
-                      {c.repoFullName} ↗
-                    </a>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {c.lastWorkflow && (
-                      <a href={c.lastWorkflow.htmlUrl ?? "#"} target="_blank" rel="noreferrer">
-                        <span className={statusToPill(c.lastWorkflow.conclusion ?? c.lastWorkflow.status)}>
-                          {c.lastWorkflow.conclusion ?? c.lastWorkflow.status}
-                        </span>
-                      </a>
-                    )}
-                    {c.openPRs > 0 && (
-                      <span className="pill pill-info">{c.openPRs} PR</span>
-                    )}
-                  </div>
-                </div>
-                <div className="grid grid-cols-3 gap-2">
-                  {c.channels.map((ch) => (
-                    <div
-                      key={ch.channel}
-                      className="bg-bg-raised border border-border-subtle rounded px-2 py-1.5"
-                    >
-                      <div className="text-[10px] uppercase text-text-muted">{ch.channel}</div>
-                      <div className="font-mono text-sm truncate">
-                        {ch.latestTag ? (
-                          <a href={ch.htmlUrl ?? "#"} target="_blank" rel="noreferrer" className="hover:underline">
-                            {ch.latestTag}
-                          </a>
-                        ) : (
-                          <span className="text-text-muted">—</span>
-                        )}
-                      </div>
-                      <div className="text-xs text-text-muted">{timeAgo(ch.publishedAt)}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 min-h-[600px]">
+          <CardShell
+            title="Servidores"
+            count={`${data.summary.serversUp}/${data.summary.serversTotal} up`}
+            href="/dashboard/central"
+          >
+            <ServerTileGrid
+              servers={data.serverSummary}
+              interactive
+              onTileClick={(s) => setSelectedServer(s)}
+            />
+          </CardShell>
 
-        <section className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold">Servidores</h2>
-            <div className="flex gap-2 text-xs">
-              <Link href="/dashboard/central" className="text-status-info hover:underline">centrales →</Link>
-              <Link href="/dashboard/filiales" className="text-status-info hover:underline">filiales →</Link>
-              <Link href="/dashboard/replicacion" className="text-status-info hover:underline">replicación →</Link>
-            </div>
-          </div>
-          {Object.entries(grouped).map(([empresa, list]) => (
-            <div key={empresa} className="space-y-2">
-              <h3 className="text-sm font-semibold capitalize text-text-secondary">{empresa}</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {list.map((s) => <ServerStatusCard key={s.id} s={s} />)}
-              </div>
-            </div>
-          ))}
-        </section>
+          <CardShell title="CI/CD" href="/dashboard/cicd">
+            <CicdFlowCard
+              runs={data.recentRuns ?? []}
+              releases={data.latestReleases ?? []}
+              interactive
+            />
+          </CardShell>
+
+          <CardShell
+            title="Replicación · top lag"
+            href="/dashboard/replicacion"
+          >
+            <ReplicationLagCard rows={data.topLag ?? []} />
+          </CardShell>
+
+          <CardShell
+            title="Version drift"
+            count={data.summary.versionDriftCount > 0 ? `${data.summary.versionDriftCount} affected` : undefined}
+          >
+            <DriftMatrixCard rows={data.driftRows ?? []} />
+          </CardShell>
+        </div>
 
         <section className="card space-y-2">
           <h2 className="font-semibold text-sm">Sincronización</h2>
@@ -186,6 +176,33 @@ export default function OverviewPage() {
       <div className="xl:sticky xl:top-4 xl:self-start">
         <AlertSidebar maxItems={20} />
       </div>
+
+      <Modal
+        open={selectedServer != null}
+        onClose={() => setSelectedServer(null)}
+        title={selectedServer?.nombre ?? ""}
+        widthClass="max-w-2xl"
+      >
+        {selectedServer && (
+          <div className="space-y-3">
+            <ServerStatusCard s={selectedServer} />
+            <div className="flex items-center gap-3 text-sm">
+              <Link
+                href={`/dashboard/admin/servers/${selectedServer.id}`}
+                className="text-status-info hover:underline"
+              >
+                Editar servidor →
+              </Link>
+              <Link
+                href="/dashboard/replicacion"
+                className="text-status-info hover:underline"
+              >
+                Ver replicación →
+              </Link>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }
