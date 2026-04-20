@@ -12,14 +12,18 @@ const SYNC_HEALTH_MS = Number(process.env.SYNC_HEALTH_INTERVAL_MS ?? 60_000);
 const SYNC_REPLICATION_MS = Number(process.env.SYNC_REPLICATION_INTERVAL_MS ?? 120_000);
 const EVAL_ALERTS_MS = Number(process.env.EVALUATE_ALERTS_INTERVAL_MS ?? 60_000);
 
-let running = false;
+// Mutex por job (no global). Cada job evita correr dos veces simultáneamente,
+// pero jobs distintos SÍ pueden paralelizarse — todos leen/escriben SQLite con
+// busy_timeout. El mutex global anterior hacía que alerts-pipeline (rápido)
+// nunca encuentre ventana libre entre sync-replication y sync-health.
+const running: Record<string, boolean> = {};
 
 async function safeRun<T>(name: string, fn: () => Promise<T>) {
-  if (running && name !== "sync-health") {
-    console.warn(`[runner] ${name} skipped (another job running)`);
+  if (running[name]) {
+    console.warn(`[runner] ${name} skipped (previous invocation still running)`);
     return;
   }
-  running = true;
+  running[name] = true;
   const t0 = Date.now();
   try {
     const result = await fn();
@@ -27,7 +31,7 @@ async function safeRun<T>(name: string, fn: () => Promise<T>) {
   } catch (err) {
     console.error(`[runner] ${name} FAILED`, err);
   } finally {
-    running = false;
+    running[name] = false;
   }
 }
 
