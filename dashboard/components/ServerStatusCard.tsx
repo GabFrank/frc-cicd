@@ -1,6 +1,7 @@
 "use client";
 
 import { statusToPill, timeAgo } from "@/lib/utils";
+import { RefreshButton } from "./RefreshButton";
 
 export interface ServerStatus {
   id: number;
@@ -55,11 +56,14 @@ export function ServerStatusCard({ s }: { s: ServerStatus }) {
             {s.ip}:{s.appPort ?? "?"} · canal {s.channel ?? "—"}
           </div>
         </div>
-        <div className="text-right shrink-0">
-          <span className={statusToPill(s.appHealth)}>{s.appHealth}</span>
-          <div className="text-[10px] text-text-muted mt-0.5">
-            {s.appHealthLatency ? `${s.appHealthLatency}ms · ` : ""}{timeAgo(s.appHealthAt)}
+        <div className="text-right shrink-0 flex items-start gap-2">
+          <div>
+            <span className={statusToPill(s.appHealth)}>{s.appHealth}</span>
+            <div className="text-[10px] text-text-muted mt-0.5">
+              {s.appHealthLatency ? `${s.appHealthLatency}ms · ` : ""}{timeAgo(s.appHealthAt)}
+            </div>
           </div>
+          <RefreshButton serverId={s.id} className="text-sm mt-0.5" />
         </div>
       </div>
 

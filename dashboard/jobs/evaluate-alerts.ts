@@ -14,8 +14,12 @@ interface Candidate {
 const STALE_DEPLOYMENT_MS = 2 * 60 * 60 * 1000; // 2h
 const HEALTH_FAIL_THRESHOLD = 3;
 
-const PG_CONN_WARN = Number(process.env.PG_CONN_WARN ?? 50);
-const PG_CONN_CRIT = Number(process.env.PG_CONN_CRIT ?? 90);
+// Thresholds de conexiones PG — deshabilitados por default. Servidores centrales
+// con muchas publicaciones/subscripciones generan decenas de conexiones baseline
+// (walsenders + applyworkers) → falsos positivos. Setear explícitamente a valores
+// mayores a ese baseline para habilitar. 0 = deshabilitado.
+const PG_CONN_WARN = Number(process.env.PG_CONN_WARN ?? 0);
+const PG_CONN_CRIT = Number(process.env.PG_CONN_CRIT ?? 0);
 
 export async function evaluateAlerts() {
   const runId = db
@@ -171,30 +175,32 @@ export async function evaluateAlerts() {
       });
     }
 
-    // Conexiones PG altas
-    const pgDbs = db.select().from(schema.pgDatabases).all();
-    for (const d of pgDbs) {
-      if (d.activeConnections == null || d.serverId == null) continue;
-      if (d.activeConnections >= PG_CONN_CRIT) {
-        const srv = serversById.get(d.serverId);
-        candidates.push({
-          fingerprint: `pg-conn:srv:${d.serverId}:${d.name}`,
-          severity: "critical",
-          kind: "pg_connections_high",
-          serverId: d.serverId,
-          title: `${d.activeConnections} conexiones en ${srv?.nombre ?? "?"}/${d.name}`,
-          detail: `Threshold critical: ${PG_CONN_CRIT}`,
-        });
-      } else if (d.activeConnections >= PG_CONN_WARN) {
-        const srv = serversById.get(d.serverId);
-        candidates.push({
-          fingerprint: `pg-conn:srv:${d.serverId}:${d.name}`,
-          severity: "warn",
-          kind: "pg_connections_high",
-          serverId: d.serverId,
-          title: `${d.activeConnections} conexiones en ${srv?.nombre ?? "?"}/${d.name}`,
-          detail: `Threshold warn: ${PG_CONN_WARN}`,
-        });
+    // Conexiones PG altas — solo si los thresholds están configurados (>0) via env.
+    if (PG_CONN_WARN > 0 || PG_CONN_CRIT > 0) {
+      const pgDbs = db.select().from(schema.pgDatabases).all();
+      for (const d of pgDbs) {
+        if (d.activeConnections == null || d.serverId == null) continue;
+        if (PG_CONN_CRIT > 0 && d.activeConnections >= PG_CONN_CRIT) {
+          const srv = serversById.get(d.serverId);
+          candidates.push({
+            fingerprint: `pg-conn:srv:${d.serverId}:${d.name}`,
+            severity: "critical",
+            kind: "pg_connections_high",
+            serverId: d.serverId,
+            title: `${d.activeConnections} conexiones en ${srv?.nombre ?? "?"}/${d.name}`,
+            detail: `Threshold critical: ${PG_CONN_CRIT}`,
+          });
+        } else if (PG_CONN_WARN > 0 && d.activeConnections >= PG_CONN_WARN) {
+          const srv = serversById.get(d.serverId);
+          candidates.push({
+            fingerprint: `pg-conn:srv:${d.serverId}:${d.name}`,
+            severity: "warn",
+            kind: "pg_connections_high",
+            serverId: d.serverId,
+            title: `${d.activeConnections} conexiones en ${srv?.nombre ?? "?"}/${d.name}`,
+            detail: `Threshold warn: ${PG_CONN_WARN}`,
+          });
+        }
       }
     }
 

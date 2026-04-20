@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { usePollJson } from "@/components/PollQuery";
 import { Modal } from "@/components/Modal";
+import { RefreshButton } from "@/components/RefreshButton";
 import { statusToPill, timeAgo } from "@/lib/utils";
 
 interface ExpectedItem {
@@ -150,11 +151,14 @@ function ServerCard({ s, onOpen }: { s: ServerData; onOpen: () => void }) {
             {s.pgHost ?? "—"}:{s.pgPort ?? "?"}/{s.pgDatabase ?? "?"}
           </div>
         </div>
-        <div className="text-right shrink-0">
-          <span className={statusToPill(s.pgStatus)}>{s.pgStatus}</span>
-          {s.pgCheckedAt && (
-            <div className="text-xs text-text-muted mt-1">{timeAgo(s.pgCheckedAt)}</div>
-          )}
+        <div className="text-right shrink-0 flex items-start gap-2">
+          <div>
+            <span className={statusToPill(s.pgStatus)}>{s.pgStatus}</span>
+            {s.pgCheckedAt && (
+              <div className="text-xs text-text-muted mt-1">{timeAgo(s.pgCheckedAt)}</div>
+            )}
+          </div>
+          <RefreshButton serverId={s.id} className="text-sm mt-0.5" />
         </div>
       </div>
 
@@ -305,13 +309,18 @@ export default function ReplicacionPage() {
                 </div>
               </details>
             )}
-            <div className="border-t border-border-subtle pt-3">
+            <div className="border-t border-border-subtle pt-3 flex items-center gap-4">
               <Link
                 href={`/dashboard/admin/servers/${openServer.id}`}
                 className="text-sm text-status-info hover:underline"
               >
                 Editar servidor / replicación esperada →
               </Link>
+              <RefreshButton
+                serverId={openServer.id}
+                className="text-base"
+                title="Refrescar ahora (no esperar al próximo ciclo del job)"
+              />
             </div>
           </div>
         )}

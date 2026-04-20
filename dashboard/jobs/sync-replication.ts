@@ -25,7 +25,7 @@ interface ServerProbe {
 const DEFAULT_PG_PASSWORD = process.env.PG_PASSWORD ?? "";
 const DEFAULT_PG_USER = process.env.PG_USER ?? "";
 
-async function probeServer(server: typeof schema.monitoredServers.$inferSelect): Promise<ServerProbe> {
+export async function probeServer(server: typeof schema.monitoredServers.$inferSelect): Promise<ServerProbe> {
   const probe: ServerProbe = {
     status: "down",
     version: null,
@@ -155,7 +155,7 @@ async function probeServer(server: typeof schema.monitoredServers.$inferSelect):
   return probe;
 }
 
-function persistServerSnapshot(server: typeof schema.monitoredServers.$inferSelect, probe: ServerProbe) {
+export function persistServerSnapshot(server: typeof schema.monitoredServers.$inferSelect, probe: ServerProbe) {
   const port = server.pgPort ?? 0;
   const label = `${server.empresa ?? "?"}/${server.nombre}`;
   const now = new Date().toISOString();
@@ -262,7 +262,7 @@ function persistServerSnapshot(server: typeof schema.monitoredServers.$inferSele
   }
 }
 
-function evaluateExpected(serverId: number, probe: ServerProbe) {
+export function evaluateExpected(serverId: number, probe: ServerProbe) {
   const expected = db
     .select()
     .from(schema.expectedReplication)

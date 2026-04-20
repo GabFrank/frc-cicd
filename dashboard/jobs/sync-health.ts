@@ -24,7 +24,7 @@ async function fetchJson<T = unknown>(url: string): Promise<T | null> {
   }
 }
 
-async function checkOne(url: string): Promise<{
+export async function checkOne(url: string): Promise<{
   status: "up" | "down";
   httpCode: number | null;
   latencyMs: number;
@@ -59,7 +59,7 @@ async function checkOne(url: string): Promise<{
   }
 }
 
-async function enrichRuntime(serverId: number, base: string) {
+export async function enrichRuntime(serverId: number, base: string) {
   const info = await fetchJson<Record<string, any>>(`${base}/actuator/info`);
   const memUsed = await fetchJson<{ measurements?: Array<{ value: number }> }>(
     `${base}/actuator/metrics/jvm.memory.used`,
