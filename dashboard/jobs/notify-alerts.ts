@@ -270,7 +270,18 @@ export async function notifyAlerts() {
       .all()
       .filter((a) => a.resolvedAt && new Date(a.resolvedAt).getTime() >= cutoff);
 
+    // GitHub events son one-shot — fire una vez, no tiene sentido notificar 'resolved'
+    // después (el PR sigue abierto, el release sigue publicado, el workflow falló y ya).
+    const EVENT_KINDS_NO_RESOLVED = new Set([
+      "github_pr_opened",
+      "github_release_alpha",
+      "github_release_beta",
+      "github_release_stable",
+      "github_workflow_failed",
+    ]);
+
     for (const alert of recentlyResolved) {
+      if (EVENT_KINDS_NO_RESOLVED.has(alert.kind)) continue;
       const deliveries = matchDeliveries(alert, rules, targetsById, serverById);
       const server = alert.serverId != null ? serverById.get(alert.serverId) : undefined;
       const text = formatAlertMessage({

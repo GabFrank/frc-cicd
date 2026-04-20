@@ -339,6 +339,81 @@ export async function evaluateAlerts() {
       }
     }
 
+    // ========== GitHub events (one-shot) ==========
+    // PR abierto, release publicada, workflow failed en ramas importantes.
+    // Ventana: si el evento ocurrió en las últimas GITHUB_EVENT_WINDOW_MS → fire.
+    // Fuera de ventana → no aparece en candidates → auto-resolve silencioso
+    // (notify-alerts suprime 'resolved' para kinds github_*).
+    const GITHUB_EVENT_WINDOW_MS = 2 * 60 * 60 * 1000; // 2h
+    const windowCutoffIso = new Date(Date.now() - GITHUB_EVENT_WINDOW_MS).toISOString();
+    const componentsById = new Map(
+      db.select().from(schema.components).all().map((c) => [c.id, c]),
+    );
+
+    // PR abierto
+    if (ruleConfig.get("github_pr_opened")?.enabled !== false) {
+      const prs = db.select().from(schema.pullRequests).where(eq(schema.pullRequests.state, "open")).all();
+      for (const pr of prs) {
+        if (!pr.createdAt) continue;
+        if (pr.createdAt < windowCutoffIso) continue;
+        if (pr.draft) continue;
+        const comp = componentsById.get(pr.componentId);
+        candidates.push({
+          fingerprint: `github-pr:${comp?.slug ?? pr.componentId}:${pr.number}`,
+          severity: "warn",
+          kind: "github_pr_opened",
+          title: `PR #${pr.number} abierto en ${comp?.slug ?? "?"}`,
+          detail: `${pr.title} · autor: ${pr.author ?? "?"} · ${pr.headRef ?? "?"} → ${pr.baseRef ?? "?"}${pr.htmlUrl ? `\nURL: ${pr.htmlUrl}` : ""}`,
+        });
+      }
+    }
+
+    // Release publicada — separada por canal para permitir filtros por severidad
+    const releaseKinds = ["github_release_alpha", "github_release_beta", "github_release_stable"] as const;
+    if (releaseKinds.some((k) => ruleConfig.get(k)?.enabled !== false)) {
+      const rels = db.select().from(schema.releases).all();
+      for (const r of rels) {
+        if (!r.publishedAt || r.publishedAt < windowCutoffIso) continue;
+        if (r.draft) continue;
+        const channel = (r.channel ?? "").toLowerCase();
+        let kind: string | null = null;
+        let sev: "info" | "warn" | "critical" = "info";
+        if (channel === "alpha") { kind = "github_release_alpha"; sev = "info"; }
+        else if (channel === "beta") { kind = "github_release_beta"; sev = "warn"; }
+        else if (channel === "stable") { kind = "github_release_stable"; sev = "warn"; }
+        else continue;
+        if (ruleConfig.get(kind)?.enabled === false) continue;
+        const comp = componentsById.get(r.componentId);
+        candidates.push({
+          fingerprint: `github-release:${comp?.slug ?? r.componentId}:${r.tagName}`,
+          severity: sev,
+          kind,
+          title: `Release ${r.tagName} en ${comp?.slug ?? "?"} (${channel})`,
+          detail: `${r.name ?? r.tagName}${r.htmlUrl ? `\nURL: ${r.htmlUrl}` : ""}`,
+        });
+      }
+    }
+
+    // Workflow failed en ramas importantes
+    if (ruleConfig.get("github_workflow_failed")?.enabled !== false) {
+      const runs = db.select().from(schema.workflowRuns).all();
+      const RELEVANT_BRANCHES = new Set(["master", "main", "release/beta", "develop"]);
+      for (const w of runs) {
+        if (w.conclusion !== "failure") continue;
+        if (w.status !== "completed") continue;
+        if (!w.runStartedAt || w.runStartedAt < windowCutoffIso) continue;
+        if (!w.headBranch || !RELEVANT_BRANCHES.has(w.headBranch)) continue;
+        const comp = componentsById.get(w.componentId);
+        candidates.push({
+          fingerprint: `github-workflow-failed:${comp?.slug ?? w.componentId}:${w.id}`,
+          severity: "critical",
+          kind: "github_workflow_failed",
+          title: `Workflow "${w.name ?? "?"}" falló en ${comp?.slug ?? "?"}/${w.headBranch}`,
+          detail: `Run #${w.runNumber ?? "?"} · event: ${w.event ?? "?"}${w.htmlUrl ? `\nURL: ${w.htmlUrl}` : ""}`,
+        });
+      }
+    }
+
     // ========== D: host unreachable (TCP probe) ==========
     // Si el host no responde TCP 2+ ciclos, todas las alerts de apps sobre ese host
     // son consecuencia (no causa). Se reemplazan por una sola `host_unreachable:<ip>`.

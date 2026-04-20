@@ -183,6 +183,11 @@ const ALERT_RULE_DEFAULTS: Array<{
   { kind: "replication_stale", display_name: "Subscription sin mensajes recientes", severity_default: "warn", pending_cycles: 3, resolving_cycles: 3, notes: ">10min warn, >1h critical" },
   { kind: "host_down", display_name: "Host DOWN (correlación)", severity_default: "critical", pending_cycles: 1, resolving_cycles: 3, notes: "Síntesis cuando ≥2 instancias del mismo IP caen simultáneo" },
   { kind: "host_unreachable", display_name: "Host no alcanzable (TCP)", severity_default: "critical", pending_cycles: 1, resolving_cycles: 3, notes: "TCP al host falla 2+ ciclos. Suprime todas las alertas de apps en ese host" },
+  { kind: "github_pr_opened", display_name: "PR abierto en GitHub", severity_default: "warn", pending_cycles: 1, resolving_cycles: 1, notes: "Evento one-shot. No emite 'resolved'" },
+  { kind: "github_release_alpha", display_name: "Release en canal alpha", severity_default: "info", pending_cycles: 1, resolving_cycles: 1, notes: "Evento one-shot" },
+  { kind: "github_release_beta", display_name: "Release en canal beta", severity_default: "warn", pending_cycles: 1, resolving_cycles: 1, notes: "Evento one-shot" },
+  { kind: "github_release_stable", display_name: "Release en canal stable", severity_default: "warn", pending_cycles: 1, resolving_cycles: 1, notes: "Evento one-shot · touches prod" },
+  { kind: "github_workflow_failed", display_name: "Workflow falló en beta/stable", severity_default: "critical", pending_cycles: 1, resolving_cycles: 1, notes: "Solo develop/master/release/beta · evento one-shot" },
 ];
 
 function apply0003() {
