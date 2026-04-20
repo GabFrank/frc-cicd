@@ -21,6 +21,8 @@ interface ServerInput {
   githubEnvironment?: string | null;
   active?: boolean;
   alertsEnabled?: boolean;
+  quietStart?: string | null;
+  quietEnd?: string | null;
   notes?: string | null;
 }
 
@@ -66,6 +68,8 @@ export function ServerForm({
         githubEnvironment: form.githubEnvironment || null,
         active: !!form.active,
         alertsEnabled: form.alertsEnabled !== false,
+        quietStart: form.quietStart?.trim() || null,
+        quietEnd: form.quietEnd?.trim() || null,
         notes: form.notes || null,
       };
       if (pwd.length > 0) payload.pgPassword = pwd;
@@ -204,6 +208,20 @@ export function ServerForm({
           <span>Alertas y notificaciones habilitadas</span>
           <span className="text-text-muted text-xs">— si desactivado: datos se siguen recogiendo pero no se generan alertas para este server</span>
         </label>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="space-y-1">
+            <span className={labelCls}>Ventana silencio — inicio (HH:MM)</span>
+            <input className={inputCls} value={form.quietStart ?? ""} onChange={(e) => setF("quietStart", e.target.value)} placeholder="20:00" />
+          </label>
+          <label className="space-y-1">
+            <span className={labelCls}>Ventana silencio — fin (HH:MM)</span>
+            <input className={inputCls} value={form.quietEnd ?? ""} onChange={(e) => setF("quietEnd", e.target.value)} placeholder="08:00" />
+          </label>
+        </div>
+        <p className="text-xs text-text-muted">
+          Entre inicio y fin no se generan alertas para este server (ej. filial que apaga de noche).
+          Horario local según <code>WHATSAPP_TZ</code>. Soporta cruce de medianoche.
+        </p>
         <label className="space-y-1 block">
           <span className={labelCls}>Notas</span>
           <textarea className={inputCls} rows={2} value={form.notes ?? ""} onChange={(e) => setF("notes", e.target.value)} />

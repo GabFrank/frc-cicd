@@ -218,6 +218,8 @@ export const monitoredServers = sqliteTable("monitored_servers", {
   githubEnvironment: text("github_environment"),
   active: integer("active", { mode: "boolean" }).notNull().default(true),
   alertsEnabled: integer("alerts_enabled", { mode: "boolean" }).notNull().default(true),
+  quietStart: text("quiet_start"),
+  quietEnd: text("quiet_end"),
   notes: text("notes"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),

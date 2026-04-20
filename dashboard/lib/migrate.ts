@@ -288,6 +288,13 @@ function apply0007() {
     sqlite.exec(`ALTER TABLE monitored_servers ADD COLUMN alerts_enabled INTEGER NOT NULL DEFAULT 1;`);
     console.log("[migrate] 0007: monitored_servers.alerts_enabled");
   }
+  if (!cols.some((c) => c.name === "quiet_start")) {
+    sqlite.exec(`
+      ALTER TABLE monitored_servers ADD COLUMN quiet_start TEXT;
+      ALTER TABLE monitored_servers ADD COLUMN quiet_end TEXT;
+    `);
+    console.log("[migrate] 0007: monitored_servers.quiet_start/end");
+  }
 }
 
 function apply0006() {

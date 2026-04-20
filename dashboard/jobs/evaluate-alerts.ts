@@ -59,6 +59,34 @@ function lastSyncRunOk(jobName: string): { recent: boolean; ok: boolean } {
   return { recent: ageMs < 3 * 60 * 1000, ok: !!row.ok };
 }
 
+function isInQuietWindow(
+  quietStart: string | null | undefined,
+  quietEnd: string | null | undefined,
+  timeZone: string,
+  now: Date,
+): boolean {
+  if (!quietStart || !quietEnd) return false;
+  // Parse HH:MM
+  const m = /^(\d{1,2}):(\d{2})$/;
+  const ms = quietStart.match(m), me = quietEnd.match(m);
+  if (!ms || !me) return false;
+  const startMin = Number(ms[1]) * 60 + Number(ms[2]);
+  const endMin = Number(me[1]) * 60 + Number(me[2]);
+  // "Now" local al TZ
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(now);
+  const h = Number(parts.find((p) => p.type === "hour")?.value ?? "0");
+  const mm = Number(parts.find((p) => p.type === "minute")?.value ?? "0");
+  const nowMin = h * 60 + mm;
+  // Wraparound (22:00 → 06:00)
+  if (startMin <= endMin) return nowMin >= startMin && nowMin < endMin;
+  return nowMin >= startMin || nowMin < endMin;
+}
+
 function fmtBytes(n: number): string {
   if (n < 1024) return `${n}B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)}KB`;
@@ -339,6 +367,29 @@ export async function evaluateAlerts() {
       }
     }
 
+    // ========== Per-server alerts toggle + quiet windows ==========
+    // Un server está "silenciado" si:
+    //   - alerts_enabled=false, O
+    //   - ahora está dentro de su quiet_start/quiet_end (ej. filial apaga de noche)
+    // Durante el silencio: no se emiten candidates ni se sintetiza host_*.
+    // Declarado arriba (antes de D/B1/B2) porque todos lo consultan.
+    const timeZone = process.env.WHATSAPP_TZ ?? "America/Asuncion";
+    const nowDate = new Date();
+    const silencedServers = new Set(
+      servers
+        .filter(
+          (s) =>
+            !s.alertsEnabled ||
+            isInQuietWindow(s.quietStart, s.quietEnd, timeZone, nowDate),
+        )
+        .map((s) => s.id),
+    );
+    const isHostFullySilenced = (ip: string): boolean => {
+      const onIp = servers.filter((s) => s.ip === ip);
+      if (onIp.length === 0) return false;
+      return onIp.every((s) => silencedServers.has(s.id));
+    };
+
     // ========== GitHub events (one-shot) ==========
     // PR abierto, release publicada, workflow failed en ramas importantes.
     // Ventana: si el evento ocurrió en las últimas GITHUB_EVENT_WINDOW_MS → fire.
@@ -440,6 +491,7 @@ export async function evaluateAlerts() {
 
       // Emitir un host_unreachable por IP, listando servers afectados.
       for (const ip of unreachableIps) {
+        if (isHostFullySilenced(ip)) continue; // todos los servers en esa IP silenciados
         const affected = servers.filter((s) => s.ip === ip).map((s) => s.nombre);
         const row = reachabilityRows.find((r) => r.ip === ip);
         const since = row?.lastReachableAt ?? row?.lastProbeAt ?? "desconocido";
@@ -456,12 +508,7 @@ export async function evaluateAlerts() {
       }
     }
 
-    // ========== Per-server alerts toggle ==========
-    // Si monitored_server.alerts_enabled=false, suprimir todos los candidates
-    // de ese server (datos siguen en DB, solo no se notifica).
-    const silencedServers = new Set(
-      servers.filter((s) => !s.alertsEnabled).map((s) => s.id),
-    );
+    // ========== Filter silenced per-server candidates ==========
     if (silencedServers.size > 0) {
       const before = candidates.length;
       const afterToggle = candidates.filter(
@@ -470,7 +517,7 @@ export async function evaluateAlerts() {
       candidates.length = 0;
       candidates.push(...afterToggle);
       const dropped = before - candidates.length;
-      if (dropped > 0) console.log(`[evaluate-alerts] silenced: ${dropped} candidates de ${silencedServers.size} servers`);
+      if (dropped > 0) console.log(`[evaluate-alerts] silenced: ${dropped} candidates de ${silencedServers.size} servers (toggle+quiet)`);
     }
 
     // ========== B1: dep-tree suppression ==========
@@ -514,6 +561,7 @@ export async function evaluateAlerts() {
       }
       for (const [ip, group] of byIp) {
         if (group.length < 2) continue;
+        if (isHostFullySilenced(ip)) continue;
         const names = group
           .map((c) => serversById.get(c.serverId!)?.nombre ?? "?")
           .join(", ");

@@ -46,6 +46,8 @@ export async function POST(req: NextRequest) {
     githubEnvironment: body.githubEnvironment ?? null,
     active: body.active ?? true,
     alertsEnabled: body.alertsEnabled ?? true,
+    quietStart: body.quietStart ?? null,
+    quietEnd: body.quietEnd ?? null,
     notes: body.notes ?? null,
     createdAt: now,
     updatedAt: now,
