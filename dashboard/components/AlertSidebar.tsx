@@ -16,6 +16,19 @@ interface Alert {
   lastSeenAt: string;
   resolvedAt: string | null;
   instanceName: string | null;
+  state?: string;
+  consecutiveHits?: number;
+  consecutiveClears?: number;
+  promotedAt?: string | null;
+}
+
+function stateIcon(state?: string): string {
+  switch (state) {
+    case "pending": return "⏳";
+    case "firing": return "🔴";
+    case "resolving": return "🟡";
+    default: return "";
+  }
 }
 
 interface AlertData {
@@ -49,24 +62,31 @@ export function AlertSidebar({ heightClass = "h-[calc(100vh-9rem)]", maxItems }:
   if (!data) return null;
 
   const active = data.active;
+  // Split pending (no confirmadas aún) de las que ya promovieron (firing/resolving).
+  const pending = active.filter((a) => a.state === "pending");
+  const fired = active.filter((a) => a.state !== "pending");
+
   const grouped: Record<string, Alert[]> = { critical: [], warn: [], info: [] };
-  for (const a of active) {
+  for (const a of fired) {
     const key = SEVERITY_ORDER.includes(a.severity as any) ? a.severity : "info";
     grouped[key].push(a);
   }
 
-  const total = active.length;
+  const total = fired.length;
   const counts = {
     critical: grouped.critical.length,
     warn: grouped.warn.length,
     info: grouped.info.length,
+    pending: pending.length,
   };
 
-  let visible = active;
+  // Mostrar fired + pending al final. Limite de maxItems.
+  const combined = [...fired, ...pending];
+  let visible = combined;
   let overflow = 0;
-  if (maxItems && active.length > maxItems) {
-    visible = active.slice(0, maxItems);
-    overflow = active.length - maxItems;
+  if (maxItems && combined.length > maxItems) {
+    visible = combined.slice(0, maxItems);
+    overflow = combined.length - maxItems;
   }
 
   return (
@@ -76,10 +96,15 @@ export function AlertSidebar({ heightClass = "h-[calc(100vh-9rem)]", maxItems }:
           <div className="text-xs uppercase text-text-muted">Alertas activas</div>
           <div className="text-2xl font-bold">{total}</div>
         </div>
-        <div className="flex gap-1 text-xs">
+        <div className="flex gap-1 text-xs flex-wrap justify-end">
           {counts.critical > 0 && <span className="pill pill-err">{counts.critical}</span>}
           {counts.warn > 0 && <span className="pill pill-warn">{counts.warn}</span>}
           {counts.info > 0 && <span className="pill pill-info">{counts.info}</span>}
+          {counts.pending > 0 && (
+            <span className="pill pill-neutral" title="Pendientes — aún no confirmadas">
+              ⏳ {counts.pending}
+            </span>
+          )}
         </div>
       </div>
 
@@ -92,12 +117,17 @@ export function AlertSidebar({ heightClass = "h-[calc(100vh-9rem)]", maxItems }:
             key={a.id}
             type="button"
             onClick={() => setOpenId(a.id)}
-            className={`card border ${severityClass(a.severity)} space-y-1 w-full text-left hover:brightness-125 transition`}
-            title="Click para gestionar"
+            className={`card border ${a.state === "pending" ? "border-border-subtle bg-bg-raised opacity-70" : severityClass(a.severity)} space-y-1 w-full text-left hover:brightness-125 transition`}
+            title={`Click para gestionar${a.state ? ` · estado: ${a.state}` : ""}`}
           >
             <div className="flex items-start justify-between gap-2">
-              <div className="font-medium text-sm leading-tight">{a.title}</div>
-              <span className={severityPill(a.severity)}>{a.severity}</span>
+              <div className="font-medium text-sm leading-tight">
+                {stateIcon(a.state) && <span className="mr-1">{stateIcon(a.state)}</span>}
+                {a.title}
+              </div>
+              <span className={a.state === "pending" ? "pill pill-neutral" : severityPill(a.severity)}>
+                {a.state === "pending" ? "pending" : a.severity}
+              </span>
             </div>
             {a.instanceName && (
               <div className="text-xs text-text-muted font-mono truncate">{a.instanceName}</div>

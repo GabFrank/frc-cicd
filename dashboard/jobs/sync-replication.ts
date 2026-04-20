@@ -8,6 +8,13 @@ interface Result {
   error?: string;
 }
 
+interface SubscriptionErrorInfo {
+  applyErrorCount: number;
+  syncErrorCount: number;
+  lastErrorTime: string | null;
+  lastErrorMessage: string | null;
+}
+
 interface ServerProbe {
   status: "up" | "down";
   version: string | null;
@@ -20,6 +27,10 @@ interface ServerProbe {
   activeConnections: number | null;
   latencyMs: number;
   sucursales: Array<{ id: number; ip: string | null; puerto: number | null; activo: boolean | null; nombre: string | null }>;
+  walLsnNow: string | null;
+  slotLag: Map<string, number>;
+  subscriptionErrors: Map<string, SubscriptionErrorInfo>;
+  subscriptionAge: Map<string, number>;
 }
 
 const DEFAULT_PG_PASSWORD = process.env.PG_PASSWORD ?? "";
@@ -38,6 +49,10 @@ export async function probeServer(server: typeof schema.monitoredServers.$inferS
     activeConnections: null,
     latencyMs: 0,
     sucursales: [],
+    walLsnNow: null,
+    slotLag: new Map(),
+    subscriptionErrors: new Map(),
+    subscriptionAge: new Map(),
   };
 
   if (!server.pgHost || !server.pgPort || !server.pgDatabase) {
@@ -78,20 +93,43 @@ export async function probeServer(server: typeof schema.monitoredServers.$inferS
         );
         probe.activeConnections = Number(ac.rows[0]?.c ?? 0);
 
+        // WAL actual + slot lag (bytes retenidos por cada slot vs confirmed_flush_lsn)
+        try {
+          const walNow = await c.query<{ lsn: string }>("SELECT pg_current_wal_lsn()::text AS lsn");
+          probe.walLsnNow = walNow.rows[0]?.lsn ?? null;
+        } catch { /* pg standby no tiene pg_current_wal_lsn, skip */ }
+
         const slots = await c.query<{
           slot_name: string;
           active: boolean;
           slot_type: string;
           restart_lsn: string | null;
           confirmed_flush_lsn: string | null;
+          lag_bytes: string | null;
         }>(
-          `SELECT slot_name, active, slot_type, restart_lsn::text, confirmed_flush_lsn::text FROM pg_replication_slots`,
+          `SELECT slot_name, active, slot_type,
+                  restart_lsn::text,
+                  confirmed_flush_lsn::text,
+                  CASE
+                    WHEN pg_is_in_recovery() THEN NULL
+                    WHEN confirmed_flush_lsn IS NULL THEN NULL
+                    ELSE pg_wal_lsn_diff(pg_current_wal_lsn(), confirmed_flush_lsn)::text
+                  END AS lag_bytes
+           FROM pg_replication_slots`,
         );
         for (const s of slots.rows) {
           probe.slots.set(s.slot_name, {
             active: !!s.active,
-            extra: { slot_type: s.slot_type, restart_lsn: s.restart_lsn, confirmed_flush_lsn: s.confirmed_flush_lsn },
+            extra: {
+              slot_type: s.slot_type,
+              restart_lsn: s.restart_lsn,
+              confirmed_flush_lsn: s.confirmed_flush_lsn,
+              lag_bytes: s.lag_bytes ? Number(s.lag_bytes) : null,
+            },
           });
+          if (s.lag_bytes != null) {
+            probe.slotLag.set(s.slot_name, Number(s.lag_bytes));
+          }
         }
 
         const pubs = await c.query<{ pubname: string }>("SELECT pubname FROM pg_publication");
@@ -104,19 +142,62 @@ export async function probeServer(server: typeof schema.monitoredServers.$inferS
             pid: number | null;
             received_lsn: string | null;
             latest_end_time: string | null;
+            last_msg_receipt_time: string | null;
+            age_sec: number | null;
           }>(
-            `SELECT s.subname, s.subenabled, st.pid, st.received_lsn::text, st.latest_end_time::text
+            `SELECT s.subname, s.subenabled, st.pid,
+                    st.received_lsn::text,
+                    st.latest_end_time::text,
+                    st.last_msg_receipt_time::text,
+                    CASE WHEN st.last_msg_receipt_time IS NULL THEN NULL
+                         ELSE EXTRACT(EPOCH FROM (now() - st.last_msg_receipt_time))::int
+                    END AS age_sec
              FROM pg_subscription s
              LEFT JOIN pg_stat_subscription st ON st.subname = s.subname`,
           );
           for (const sub of subs.rows) {
             probe.subscriptions.set(sub.subname, {
               active: !!sub.subenabled && sub.pid != null,
-              extra: { enabled: sub.subenabled, pid: sub.pid, received_lsn: sub.received_lsn, latest_end_time: sub.latest_end_time },
+              extra: {
+                enabled: sub.subenabled,
+                pid: sub.pid,
+                received_lsn: sub.received_lsn,
+                latest_end_time: sub.latest_end_time,
+                last_msg_receipt_time: sub.last_msg_receipt_time,
+                age_sec: sub.age_sec,
+              },
             });
+            if (sub.age_sec != null) probe.subscriptionAge.set(sub.subname, sub.age_sec);
           }
         } catch {
           /* requiere GRANT, silenciar */
+        }
+
+        // PG 15+: pg_stat_subscription_stats (apply_error_count, last_error_message)
+        try {
+          const errs = await c.query<{
+            subname: string;
+            apply_error_count: number;
+            sync_error_count: number;
+            last_error_time: string | null;
+            last_error_message: string | null;
+          }>(
+            `SELECT subname, apply_error_count, sync_error_count,
+                    last_error_time::text, last_error_message
+             FROM pg_stat_subscription_stats`,
+          );
+          for (const e of errs.rows) {
+            if ((e.apply_error_count ?? 0) > 0 || (e.sync_error_count ?? 0) > 0) {
+              probe.subscriptionErrors.set(e.subname, {
+                applyErrorCount: e.apply_error_count ?? 0,
+                syncErrorCount: e.sync_error_count ?? 0,
+                lastErrorTime: e.last_error_time,
+                lastErrorMessage: e.last_error_message,
+              });
+            }
+          }
+        } catch {
+          /* PG < 15 o sin permisos, silenciar */
         }
 
         const stat = await c.query<{

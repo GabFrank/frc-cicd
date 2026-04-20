@@ -125,6 +125,22 @@ export const alerts = sqliteTable("alerts", {
   lastSeenAt: text("last_seen_at").notNull().default(sql`CURRENT_TIMESTAMP`),
   resolvedAt: text("resolved_at"),
   fingerprint: text("fingerprint").notNull().unique(),
+  state: text("state").notNull().default("pending"),
+  consecutiveHits: integer("consecutive_hits").notNull().default(1),
+  consecutiveClears: integer("consecutive_clears").notNull().default(0),
+  promotedAt: text("promoted_at"),
+  promotionEpoch: integer("promotion_epoch").notNull().default(0),
+});
+
+export const alertRuleConfig = sqliteTable("alert_rule_config", {
+  kind: text("kind").primaryKey(),
+  displayName: text("display_name").notNull(),
+  severityDefault: text("severity_default").notNull(),
+  pendingCycles: integer("pending_cycles").notNull().default(1),
+  resolvingCycles: integer("resolving_cycles").notNull().default(3),
+  enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+  notes: text("notes"),
+  updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
 
 export const syncRuns = sqliteTable("sync_runs", {

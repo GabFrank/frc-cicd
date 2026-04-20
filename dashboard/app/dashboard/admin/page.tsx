@@ -99,6 +99,13 @@ export default function AdminPage() {
             }}
           />
           <Link
+            href="/dashboard/admin/alertas"
+            className="rounded bg-bg-raised border border-border-default px-3 py-1.5 text-sm hover:bg-bg-surface"
+            title="Configurar thresholds de lifecycle por tipo de alerta"
+          >
+            ⚙ Alertas
+          </Link>
+          <Link
             href="/dashboard/admin/servers/new"
             className="rounded bg-status-info/20 border border-status-info/40 px-3 py-1.5 text-sm hover:bg-status-info/30"
           >

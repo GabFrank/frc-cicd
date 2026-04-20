@@ -162,6 +162,77 @@ function tableExists(name: string): boolean {
   return !!row;
 }
 
+const ALERT_RULE_DEFAULTS: Array<{
+  kind: string;
+  display_name: string;
+  severity_default: string;
+  pending_cycles: number;
+  resolving_cycles: number;
+  notes: string;
+}> = [
+  { kind: "filial_no_success", display_name: "Filial sin deployment exitoso", severity_default: "warn", pending_cycles: 1, resolving_cycles: 3, notes: "Ya es acumulativo" },
+  { kind: "filial_stale", display_name: "Filial sin update reciente", severity_default: "warn", pending_cycles: 1, resolving_cycles: 3, notes: ">2h warn, >12h critical" },
+  { kind: "filial_failure", display_name: "Filial con último deploy failure", severity_default: "critical", pending_cycles: 1, resolving_cycles: 3, notes: "Evento discreto" },
+  { kind: "filial_rollback", display_name: "Filial con rollback detectado", severity_default: "critical", pending_cycles: 1, resolving_cycles: 3, notes: "Evento discreto" },
+  { kind: "central_down", display_name: "Instancia central DOWN", severity_default: "critical", pending_cycles: 1, resolving_cycles: 3, notes: "health_fail=3 interno" },
+  { kind: "pg_cluster_down", display_name: "Cluster PG DOWN", severity_default: "critical", pending_cycles: 1, resolving_cycles: 3, notes: "" },
+  { kind: "replication_problem", display_name: "Replicación expected missing/inactive", severity_default: "warn", pending_cycles: 2, resolving_cycles: 3, notes: "Transición en sync" },
+  { kind: "pg_connections_high", display_name: "Conexiones PG altas", severity_default: "warn", pending_cycles: 2, resolving_cycles: 3, notes: "Deshabilitada por default (env threshold=0)" },
+  { kind: "replication_lag_high", display_name: "Lag WAL alto en slot", severity_default: "warn", pending_cycles: 2, resolving_cycles: 3, notes: ">100MB warn, >1GB critical" },
+  { kind: "replication_apply_error", display_name: "Apply error en subscription", severity_default: "critical", pending_cycles: 2, resolving_cycles: 3, notes: "PG 15+ · transitorio en restart" },
+  { kind: "replication_stale", display_name: "Subscription sin mensajes recientes", severity_default: "warn", pending_cycles: 2, resolving_cycles: 3, notes: ">10min warn, >1h critical" },
+];
+
+function apply0003() {
+  const cols = sqlite.prepare(`PRAGMA table_info(alerts)`).all() as Array<{ name: string }>;
+  const hasState = cols.some((c) => c.name === "state");
+
+  if (!hasState) {
+    sqlite.exec(`
+      ALTER TABLE alerts ADD COLUMN state TEXT NOT NULL DEFAULT 'pending';
+      ALTER TABLE alerts ADD COLUMN consecutive_hits INTEGER NOT NULL DEFAULT 1;
+      ALTER TABLE alerts ADD COLUMN consecutive_clears INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE alerts ADD COLUMN promoted_at TEXT;
+      ALTER TABLE alerts ADD COLUMN promotion_epoch INTEGER NOT NULL DEFAULT 0;
+      CREATE INDEX IF NOT EXISTS idx_alerts_state ON alerts(state);
+    `);
+    // Backfill alertas existentes
+    sqlite.exec(`
+      UPDATE alerts SET state='firing', consecutive_hits=10, promoted_at=first_seen_at
+        WHERE resolved_at IS NULL;
+      UPDATE alerts SET state='resolved' WHERE resolved_at IS NOT NULL;
+    `);
+    console.log("[migrate] 0003: alerts lifecycle columns + backfill");
+  }
+
+  // alert_rule_config table (idempotente)
+  sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS alert_rule_config (
+      kind TEXT PRIMARY KEY,
+      display_name TEXT NOT NULL,
+      severity_default TEXT NOT NULL,
+      pending_cycles INTEGER NOT NULL DEFAULT 1,
+      resolving_cycles INTEGER NOT NULL DEFAULT 3,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      notes TEXT,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
+  // Seed defaults si no existe el kind (no sobreescribir ediciones del user)
+  const stmt = sqlite.prepare(`
+    INSERT OR IGNORE INTO alert_rule_config
+      (kind, display_name, severity_default, pending_cycles, resolving_cycles, enabled, notes)
+    VALUES (?, ?, ?, ?, ?, 1, ?)
+  `);
+  let seeded = 0;
+  for (const r of ALERT_RULE_DEFAULTS) {
+    const res = stmt.run(r.kind, r.display_name, r.severity_default, r.pending_cycles, r.resolving_cycles, r.notes);
+    if (res.changes > 0) seeded += 1;
+  }
+  if (seeded > 0) console.log(`[migrate] 0003: seed alert_rule_config (${seeded} kinds nuevos)`);
+}
+
 function apply0002() {
   if (tableExists("notification_targets")) {
     return;
@@ -236,6 +307,7 @@ async function main() {
   console.log("[migrate] schema ok");
   apply0001();
   apply0002();
+  apply0003();
 
   for (const c of COMPONENTS) {
     const existing = db.select().from(schema.components).where(eq(schema.components.slug, c.slug)).all();

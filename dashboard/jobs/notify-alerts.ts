@@ -72,12 +72,20 @@ export async function notifyAlerts() {
     const states = db.select().from(schema.notificationState).all();
     const stateByKey = new Map(states.map((s) => [`${s.alertFingerprint}:${s.targetId}`, s]));
 
+    // Lifecycle: solo notificar firing (promoted) o resolving. Pending/resolved no gatillan envío.
     const openAlerts = db
       .select()
       .from(schema.alerts)
-      .where(isNull(schema.alerts.resolvedAt))
+      .where(
+        and(
+          isNull(schema.alerts.resolvedAt),
+          // filtrar solo firing con promoted_at (ya confirmada) o resolving
+          // (escribimos en SQL crudo porque drizzle no tiene IN con strings fácil)
+        ),
+      )
       .orderBy(desc(schema.alerts.lastSeenAt))
-      .all();
+      .all()
+      .filter((a) => (a.state === "firing" && a.promotedAt) || a.state === "resolving");
 
     for (const alert of openAlerts) {
       const deliveries = matchDeliveries(alert, rules, targetsById, serverById);

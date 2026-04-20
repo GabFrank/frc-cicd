@@ -15,6 +15,11 @@ interface Alert {
   resolvedAt: string | null;
   fingerprint: string;
   instanceName?: string | null;
+  state?: string;
+  consecutiveHits?: number;
+  consecutiveClears?: number;
+  promotedAt?: string | null;
+  promotionEpoch?: number;
 }
 
 interface LogEntry {
@@ -109,21 +114,52 @@ export function AlertDialog({
                   kind={data.alert.kind} · fp=<span className="break-all">{data.alert.fingerprint}</span>
                 </div>
               </div>
-              <span
-                className={`pill ${
-                  data.alert.severity === "critical"
-                    ? "pill-err"
-                    : data.alert.severity === "warn"
-                      ? "pill-warn"
-                      : "pill-info"
-                }`}
-              >
-                {data.alert.severity}
-              </span>
+              <div className="flex flex-col items-end gap-1">
+                <span
+                  className={`pill ${
+                    data.alert.severity === "critical"
+                      ? "pill-err"
+                      : data.alert.severity === "warn"
+                        ? "pill-warn"
+                        : "pill-info"
+                  }`}
+                >
+                  {data.alert.severity}
+                </span>
+                {data.alert.state && (
+                  <span
+                    className={`pill ${
+                      data.alert.state === "pending"
+                        ? "pill-neutral"
+                        : data.alert.state === "firing"
+                          ? "pill-err"
+                          : data.alert.state === "resolving"
+                            ? "pill-warn"
+                            : "pill-ok"
+                    }`}
+                  >
+                    {data.alert.state === "pending" ? "⏳" : data.alert.state === "firing" ? "🔴" : data.alert.state === "resolving" ? "🟡" : "✓"}{" "}
+                    {data.alert.state}
+                  </span>
+                )}
+              </div>
             </div>
             {data.alert.detail && <div className="text-sm text-text-secondary">{data.alert.detail}</div>}
-            <div className="text-xs text-text-muted grid grid-cols-3 gap-2">
-              <div>Primera: {timeAgo(data.alert.firstSeenAt)}</div>
+
+            {/* State machine contadores */}
+            {(data.alert.consecutiveHits !== undefined || data.alert.consecutiveClears !== undefined) && (
+              <div className="flex gap-4 text-xs text-text-muted">
+                <span>hits: <strong className="text-text-secondary">{data.alert.consecutiveHits ?? 0}</strong></span>
+                <span>clears: <strong className="text-text-secondary">{data.alert.consecutiveClears ?? 0}</strong></span>
+                {data.alert.promotionEpoch != null && (
+                  <span>epoch: <strong className="text-text-secondary">{data.alert.promotionEpoch}</strong></span>
+                )}
+              </div>
+            )}
+
+            <div className="text-xs text-text-muted grid grid-cols-4 gap-2">
+              <div>Detectada: {timeAgo(data.alert.firstSeenAt)}</div>
+              <div>{data.alert.promotedAt ? `Promovida: ${timeAgo(data.alert.promotedAt)}` : "No promovida"}</div>
               <div>Última: {timeAgo(data.alert.lastSeenAt)}</div>
               <div>{data.alert.resolvedAt ? `Resuelta: ${timeAgo(data.alert.resolvedAt)}` : "Activa"}</div>
             </div>
