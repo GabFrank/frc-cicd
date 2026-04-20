@@ -45,6 +45,7 @@ export async function POST(req: NextRequest) {
     sucursalId: body.sucursalId ?? null,
     githubEnvironment: body.githubEnvironment ?? null,
     active: body.active ?? true,
+    alertsEnabled: body.alertsEnabled ?? true,
     notes: body.notes ?? null,
     createdAt: now,
     updatedAt: now,

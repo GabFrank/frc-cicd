@@ -20,6 +20,7 @@ interface ServerInput {
   sucursalId?: number | null;
   githubEnvironment?: string | null;
   active?: boolean;
+  alertsEnabled?: boolean;
   notes?: string | null;
 }
 
@@ -34,6 +35,7 @@ export function ServerForm({
   const [form, setForm] = useState<ServerInput>({
     kind: "filial",
     active: true,
+    alertsEnabled: true,
     pgPort: 5432,
     pgDatabase: "general",
     pgUser: "franco",
@@ -63,6 +65,7 @@ export function ServerForm({
         sucursalId: form.sucursalId ? Number(form.sucursalId) : null,
         githubEnvironment: form.githubEnvironment || null,
         active: !!form.active,
+        alertsEnabled: form.alertsEnabled !== false,
         notes: form.notes || null,
       };
       if (pwd.length > 0) payload.pgPassword = pwd;
@@ -196,6 +199,11 @@ export function ServerForm({
             <span className="text-sm">Activo</span>
           </label>
         </div>
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={form.alertsEnabled !== false} onChange={(e) => setF("alertsEnabled", e.target.checked)} />
+          <span>Alertas y notificaciones habilitadas</span>
+          <span className="text-text-muted text-xs">— si desactivado: datos se siguen recogiendo pero no se generan alertas para este server</span>
+        </label>
         <label className="space-y-1 block">
           <span className={labelCls}>Notas</span>
           <textarea className={inputCls} rows={2} value={form.notes ?? ""} onChange={(e) => setF("notes", e.target.value)} />

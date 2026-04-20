@@ -280,6 +280,16 @@ function apply0004() {
   if (bumped > 0) console.log(`[migrate] 0004: bumped pending_cycles de ${bumped} kinds ruidosos`);
 }
 
+function apply0007() {
+  // Toggle per-server: activar/desactivar alertas y notificaciones originadas
+  // en ese server (los datos siguen recogiéndose, solo se suprime el candidate).
+  const cols = sqlite.prepare(`PRAGMA table_info(monitored_servers)`).all() as Array<{ name: string }>;
+  if (!cols.some((c) => c.name === "alerts_enabled")) {
+    sqlite.exec(`ALTER TABLE monitored_servers ADD COLUMN alerts_enabled INTEGER NOT NULL DEFAULT 1;`);
+    console.log("[migrate] 0007: monitored_servers.alerts_enabled");
+  }
+}
+
 function apply0006() {
   // Bajar severity a info para github_* kinds (son informativos, no alertas).
   // Idempotente: solo actualiza si el valor actual coincide con el seed viejo.
@@ -379,6 +389,7 @@ async function main() {
   apply0004();
   apply0005();
   apply0006();
+  apply0007();
 
   for (const c of COMPONENTS) {
     const existing = db.select().from(schema.components).where(eq(schema.components.slug, c.slug)).all();

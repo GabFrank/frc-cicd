@@ -456,6 +456,23 @@ export async function evaluateAlerts() {
       }
     }
 
+    // ========== Per-server alerts toggle ==========
+    // Si monitored_server.alerts_enabled=false, suprimir todos los candidates
+    // de ese server (datos siguen en DB, solo no se notifica).
+    const silencedServers = new Set(
+      servers.filter((s) => !s.alertsEnabled).map((s) => s.id),
+    );
+    if (silencedServers.size > 0) {
+      const before = candidates.length;
+      const afterToggle = candidates.filter(
+        (c) => c.serverId == null || !silencedServers.has(c.serverId),
+      );
+      candidates.length = 0;
+      candidates.push(...afterToggle);
+      const dropped = before - candidates.length;
+      if (dropped > 0) console.log(`[evaluate-alerts] silenced: ${dropped} candidates de ${silencedServers.size} servers`);
+    }
+
     // ========== B1: dep-tree suppression ==========
     // Si pg_cluster_down firing para server X, los slots/subs de X aparecen missing/inactive
     // como síntoma — no emitir alertas de replicación encima. Suprime el ruido aditivo.

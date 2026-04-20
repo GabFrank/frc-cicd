@@ -31,7 +31,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   };
   const fields = [
     "kind", "empresa", "nombre", "ip", "appPort", "pgHost", "pgPort", "pgDatabase",
-    "pgUser", "channel", "os", "sucursalId", "githubEnvironment", "active", "notes",
+    "pgUser", "channel", "os", "sucursalId", "githubEnvironment", "active", "alertsEnabled", "notes",
   ];
   for (const f of fields) if (f in body) updates[f] = body[f];
   // pgPassword: solo si viene non-empty, sino preservar
