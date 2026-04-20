@@ -21,3 +21,6 @@ frc-comercial/
 # OS
 .DS_Store
 
+
+# TypeScript incremental build cache
+dashboard/tsconfig.tsbuildinfo
