@@ -82,7 +82,7 @@ export default function EditNotificationTargetPage() {
         <label className="block text-sm space-y-1">
           <span className="text-text-muted">NOMBRE</span>
           <input
-            className="w-full rounded border bg-background px-2 py-2"
+            className="w-full rounded bg-bg-raised border border-border-default px-2 py-2"
             value={row.name}
             onChange={(e) => setRow({ ...row, name: e.target.value.toUpperCase() })}
             required
@@ -91,7 +91,7 @@ export default function EditNotificationTargetPage() {
         <label className="block text-sm space-y-1">
           <span className="text-text-muted">TIPO</span>
           <select
-            className="w-full rounded border bg-background px-2 py-2"
+            className="w-full rounded bg-bg-raised border border-border-default px-2 py-2"
             value={row.kind}
             onChange={(e) => setRow({ ...row, kind: e.target.value })}
           >
@@ -101,7 +101,7 @@ export default function EditNotificationTargetPage() {
         </label>
         <label className="block text-sm space-y-1">
           <span className="text-text-muted">JID / NÚMERO</span>
-          <input className="w-full rounded border bg-background px-2 py-2 font-mono text-sm" value={row.jid} onChange={(e) => setRow({ ...row, jid: e.target.value })} required />
+          <input className="w-full rounded bg-bg-raised border border-border-default px-2 py-2 font-mono text-sm" value={row.jid} onChange={(e) => setRow({ ...row, jid: e.target.value })} required />
         </label>
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={row.active} onChange={(e) => setRow({ ...row, active: e.target.checked })} />

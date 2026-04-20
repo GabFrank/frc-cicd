@@ -182,6 +182,7 @@ const ALERT_RULE_DEFAULTS: Array<{
   { kind: "replication_apply_error", display_name: "Apply error en subscription", severity_default: "critical", pending_cycles: 2, resolving_cycles: 3, notes: "PG 15+ · transitorio en restart" },
   { kind: "replication_stale", display_name: "Subscription sin mensajes recientes", severity_default: "warn", pending_cycles: 3, resolving_cycles: 3, notes: ">10min warn, >1h critical" },
   { kind: "host_down", display_name: "Host DOWN (correlación)", severity_default: "critical", pending_cycles: 1, resolving_cycles: 3, notes: "Síntesis cuando ≥2 instancias del mismo IP caen simultáneo" },
+  { kind: "host_unreachable", display_name: "Host no alcanzable (TCP)", severity_default: "critical", pending_cycles: 1, resolving_cycles: 3, notes: "TCP al host falla 2+ ciclos. Suprime todas las alertas de apps en ese host" },
 ];
 
 function apply0003() {
@@ -232,6 +233,22 @@ function apply0003() {
     if (res.changes > 0) seeded += 1;
   }
   if (seeded > 0) console.log(`[migrate] 0003: seed alert_rule_config (${seeded} kinds nuevos)`);
+}
+
+function apply0005() {
+  // Host reachability probe table (TCP-level, independiente de la app).
+  sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS host_reachability (
+      ip TEXT PRIMARY KEY,
+      last_probe_at TEXT NOT NULL,
+      reachable INTEGER NOT NULL,
+      consecutive_unreachable INTEGER NOT NULL DEFAULT 0,
+      last_reachable_at TEXT,
+      probe_port INTEGER,
+      latency_ms INTEGER,
+      error_message TEXT
+    );
+  `);
 }
 
 function apply0004() {
@@ -334,6 +351,7 @@ async function main() {
   apply0002();
   apply0003();
   apply0004();
+  apply0005();
 
   for (const c of COMPONENTS) {
     const existing = db.select().from(schema.components).where(eq(schema.components.slug, c.slug)).all();

@@ -123,7 +123,7 @@ export default function NotificacionesPage() {
           <label className="text-xs text-text-muted flex flex-col gap-1">
             TARGET ID
             <input
-              className="rounded border bg-background px-2 py-1 font-mono text-sm"
+              className="rounded bg-bg-raised border border-border-default px-2 py-1 font-mono text-sm"
               value={testTargetId}
               onChange={(e) => setTestTargetId(e.target.value)}
             />

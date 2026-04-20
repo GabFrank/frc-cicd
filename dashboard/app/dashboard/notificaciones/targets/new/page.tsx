@@ -42,18 +42,18 @@ export default function NewNotificationTargetPage() {
       <form onSubmit={submit} className="card space-y-4">
         <label className="block text-sm space-y-1">
           <span className="text-text-muted">NOMBRE (SE GUARDA EN MAYÚSCULAS)</span>
-          <input className="w-full rounded border bg-background px-2 py-2" value={name} onChange={(e) => setName(e.target.value)} required />
+          <input className="w-full rounded bg-bg-raised border border-border-default px-2 py-2" value={name} onChange={(e) => setName(e.target.value)} required />
         </label>
         <label className="block text-sm space-y-1">
           <span className="text-text-muted">TIPO</span>
-          <select className="w-full rounded border bg-background px-2 py-2" value={kind} onChange={(e) => setKind(e.target.value as "number" | "group")}>
+          <select className="w-full rounded bg-bg-raised border border-border-default px-2 py-2" value={kind} onChange={(e) => setKind(e.target.value as "number" | "group")}>
             <option value="number">NÚMERO (EJ 595981…)</option>
             <option value="group">GRUPO (JID …@G.US)</option>
           </select>
         </label>
         <label className="block text-sm space-y-1">
           <span className="text-text-muted">JID O NÚMERO CON CÓDIGO PAÍS</span>
-          <input className="w-full rounded border bg-background px-2 py-2 font-mono text-sm" value={jid} onChange={(e) => setJid(e.target.value)} required />
+          <input className="w-full rounded bg-bg-raised border border-border-default px-2 py-2 font-mono text-sm" value={jid} onChange={(e) => setJid(e.target.value)} required />
         </label>
         <button type="submit" className="rounded bg-status-ok/20 border border-status-ok/40 px-4 py-2 text-sm font-medium" disabled={busy}>
           {busy ? "GUARDANDO…" : "CREAR"}

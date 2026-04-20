@@ -31,5 +31,11 @@ export async function POST(req: NextRequest) {
     .insert(schema.notificationTargets)
     .values({ name, kind, jid, active })
     .run();
-  return NextResponse.json({ id: Number(r.lastInsertRowid) }, { status: 201 });
+  const targetId = Number(r.lastInsertRowid);
+  // Auto-create default rule: warn+, resend 60min, todas las alertas.
+  // Editable después desde /dashboard/notificaciones/rules.
+  db.insert(schema.notificationRules)
+    .values({ targetId, minSeverity: "warn", resendIntervalMin: 60, active: true })
+    .run();
+  return NextResponse.json({ id: targetId, defaultRuleCreated: true }, { status: 201 });
 }

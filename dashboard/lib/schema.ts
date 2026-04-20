@@ -307,6 +307,17 @@ export const notificationState = sqliteTable(
   }),
 );
 
+export const hostReachability = sqliteTable("host_reachability", {
+  ip: text("ip").primaryKey(),
+  lastProbeAt: text("last_probe_at").notNull(),
+  reachable: integer("reachable", { mode: "boolean" }).notNull(),
+  consecutiveUnreachable: integer("consecutive_unreachable").notNull().default(0),
+  lastReachableAt: text("last_reachable_at"),
+  probePort: integer("probe_port"),
+  latencyMs: integer("latency_ms"),
+  errorMessage: text("error_message"),
+});
+
 export type Component = typeof components.$inferSelect;
 export type Channel = typeof channels.$inferSelect;
 export type Instance = typeof instances.$inferSelect;

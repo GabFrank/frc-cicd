@@ -123,7 +123,7 @@ export default function NotificationRulesPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <label className="space-y-1">
             <span className="text-text-muted">DESTINATARIO</span>
-            <select name="targetId" className="w-full rounded border bg-background px-2 py-2" required>
+            <select name="targetId" className="w-full rounded bg-bg-raised border border-border-default px-2 py-2" required>
               <option value="">—</option>
               {targets.map((t) => (
                 <option key={t.id} value={t.id}>
@@ -134,7 +134,7 @@ export default function NotificationRulesPage() {
           </label>
           <label className="space-y-1">
             <span className="text-text-muted">SEVERIDAD MÍNIMA</span>
-            <select name="minSeverity" className="w-full rounded border bg-background px-2 py-2" defaultValue="warn">
+            <select name="minSeverity" className="w-full rounded bg-bg-raised border border-border-default px-2 py-2" defaultValue="warn">
               <option value="info">INFO</option>
               <option value="warn">WARN</option>
               <option value="critical">CRITICAL</option>
@@ -142,27 +142,27 @@ export default function NotificationRulesPage() {
           </label>
           <label className="space-y-1 md:col-span-2">
             <span className="text-text-muted">KINDS (CSV, VACÍO = TODOS)</span>
-            <input name="alertKindsCsv" className="w-full rounded border bg-background px-2 py-2 font-mono text-xs" placeholder="central_down,filial_stale" />
+            <input name="alertKindsCsv" className="w-full rounded bg-bg-raised border border-border-default px-2 py-2 font-mono text-xs" placeholder="central_down,filial_stale" />
           </label>
           <label className="space-y-1">
             <span className="text-text-muted">EMPRESA (FILTRO)</span>
-            <input name="empresaFilter" className="w-full rounded border bg-background px-2 py-2" placeholder="FARMACIA" />
+            <input name="empresaFilter" className="w-full rounded bg-bg-raised border border-border-default px-2 py-2" placeholder="FARMACIA" />
           </label>
           <label className="space-y-1">
             <span className="text-text-muted">SERVER IDS (CSV)</span>
-            <input name="serverIdsCsv" className="w-full rounded border bg-background px-2 py-2 font-mono text-xs" placeholder="1,2,3" />
+            <input name="serverIdsCsv" className="w-full rounded bg-bg-raised border border-border-default px-2 py-2 font-mono text-xs" placeholder="1,2,3" />
           </label>
           <label className="space-y-1">
             <span className="text-text-muted">QUIET START (HH:MM)</span>
-            <input name="quietStart" className="w-full rounded border bg-background px-2 py-2 font-mono" placeholder="22:00" />
+            <input name="quietStart" className="w-full rounded bg-bg-raised border border-border-default px-2 py-2 font-mono" placeholder="22:00" />
           </label>
           <label className="space-y-1">
             <span className="text-text-muted">QUIET END (HH:MM)</span>
-            <input name="quietEnd" className="w-full rounded border bg-background px-2 py-2 font-mono" placeholder="07:00" />
+            <input name="quietEnd" className="w-full rounded bg-bg-raised border border-border-default px-2 py-2 font-mono" placeholder="07:00" />
           </label>
           <label className="space-y-1">
             <span className="text-text-muted">RE-ENVÍO CADA (MIN)</span>
-            <input name="resendIntervalMin" type="number" min={1} defaultValue={60} className="w-full rounded border bg-background px-2 py-2" />
+            <input name="resendIntervalMin" type="number" min={1} defaultValue={60} className="w-full rounded bg-bg-raised border border-border-default px-2 py-2" />
           </label>
           <label className="flex items-center gap-2 md:col-span-2">
             <input name="quietBypassCritical" type="checkbox" defaultChecked />

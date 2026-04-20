@@ -91,6 +91,23 @@ export async function evaluateAlerts() {
       replication: replicationHealth.recent && replicationHealth.ok,
     };
 
+    // Host reachability (D): IPs con 2+ probes TCP fallidos consecutivos.
+    // Mientras un host esté en esta lista, NO emitir alerts de servicios sobre él —
+    // se reemplazan por un único host_unreachable:<ip>.
+    const HOST_UNREACHABLE_THRESHOLD = 2;
+    const reachabilityRows = db.select().from(schema.hostReachability).all();
+    const unreachableIps = new Set(
+      reachabilityRows
+        .filter((r) => !r.reachable && r.consecutiveUnreachable >= HOST_UNREACHABLE_THRESHOLD)
+        .map((r) => r.ip),
+    );
+    // Helper: server is on an unreachable host.
+    const isHostUnreachable = (serverId: number | undefined): boolean => {
+      if (serverId == null) return false;
+      const srv = serversById.get(serverId);
+      return !!(srv?.ip && unreachableIps.has(srv.ip));
+    };
+
     // ========== Reglas que generan candidates ==========
 
     // Filial deployment rules
@@ -322,6 +339,48 @@ export async function evaluateAlerts() {
       }
     }
 
+    // ========== D: host unreachable (TCP probe) ==========
+    // Si el host no responde TCP 2+ ciclos, todas las alerts de apps sobre ese host
+    // son consecuencia (no causa). Se reemplazan por una sola `host_unreachable:<ip>`.
+    if (unreachableIps.size > 0 && ruleConfig.get("host_unreachable")?.enabled !== false) {
+      // Kinds que dependen de conectividad al host de la app.
+      const HOST_DEP_KINDS = new Set([
+        "central_down",
+        "pg_cluster_down",
+        "replication_problem",
+        "replication_lag_high",
+        "replication_apply_error",
+        "replication_stale",
+      ]);
+      let suppressedByHost = 0;
+      const afterHost = candidates.filter((c) => {
+        if (HOST_DEP_KINDS.has(c.kind) && isHostUnreachable(c.serverId)) {
+          suppressedByHost += 1;
+          return false;
+        }
+        return true;
+      });
+      candidates.length = 0;
+      candidates.push(...afterHost);
+
+      // Emitir un host_unreachable por IP, listando servers afectados.
+      for (const ip of unreachableIps) {
+        const affected = servers.filter((s) => s.ip === ip).map((s) => s.nombre);
+        const row = reachabilityRows.find((r) => r.ip === ip);
+        const since = row?.lastReachableAt ?? row?.lastProbeAt ?? "desconocido";
+        candidates.push({
+          fingerprint: `host-unreachable:ip:${ip}`,
+          severity: "critical",
+          kind: "host_unreachable",
+          title: `Host ${ip} no alcanzable (TCP)`,
+          detail: `Probe TCP falla hace ${row?.consecutiveUnreachable ?? "?"} ciclos · puerto ${row?.probePort ?? "?"} · último OK: ${since}. Servers afectados: ${affected.join(", ")}.`,
+        });
+      }
+      if (suppressedByHost > 0) {
+        console.log(`[evaluate-alerts] host unreachable (${unreachableIps.size} IP): suprimidas ${suppressedByHost} alertas de apps`);
+      }
+    }
+
     // ========== B1: dep-tree suppression ==========
     // Si pg_cluster_down firing para server X, los slots/subs de X aparecen missing/inactive
     // como síntoma — no emitir alertas de replicación encima. Suprime el ruido aditivo.
@@ -484,7 +543,7 @@ export async function evaluateAlerts() {
 
       // Mitigación sync-crash: no auto-resolve reglas que dependen de un job que falló
       const isReplKind = ["replication_problem", "replication_lag_high", "replication_apply_error", "replication_stale", "pg_cluster_down", "pg_connections_high"].includes(a.kind);
-      const isHealthKind = ["central_down", "host_down"].includes(a.kind);
+      const isHealthKind = ["central_down", "host_down", "host_unreachable"].includes(a.kind);
       if (isReplKind && !healthyDeps.replication) continue;
       if (isHealthKind && !healthyDeps.health) continue;
 
