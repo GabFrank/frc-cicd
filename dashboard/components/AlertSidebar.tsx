@@ -22,13 +22,14 @@ interface Alert {
   promotedAt?: string | null;
 }
 
-function stateIcon(state?: string): string {
-  switch (state) {
-    case "pending": return "⏳";
-    case "firing": return "🔴";
-    case "resolving": return "🟡";
-    default: return "";
-  }
+function alertIcon(state?: string, severity?: string): string {
+  if (state === "pending") return "⏳";
+  if (state === "resolving") return "🟢";
+  // firing — icono por severidad
+  if (severity === "critical") return "🔴";
+  if (severity === "warn") return "🟡";
+  if (severity === "info") return "🔵";
+  return "";
 }
 
 interface AlertData {
@@ -126,7 +127,7 @@ export function AlertSidebar({
             <>
               <div className="flex items-start justify-between gap-2">
                 <div className="font-medium text-sm leading-tight">
-                  {stateIcon(a.state) && <span className="mr-1">{stateIcon(a.state)}</span>}
+                  {alertIcon(a.state, a.severity) && <span className="mr-1">{alertIcon(a.state, a.severity)}</span>}
                   {a.title}
                 </div>
                 <span className={a.state === "pending" ? "pill pill-neutral" : severityPill(a.severity)}>
