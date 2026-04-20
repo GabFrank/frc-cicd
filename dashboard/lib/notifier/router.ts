@@ -35,14 +35,19 @@ export function matchDeliveries(
   const out: MatchedDelivery[] = [];
   const server = alert.serverId != null ? serverById.get(alert.serverId) : undefined;
   const alertRank = severityRank(alert.severity);
+  // Eventos informativos (github_*) bypasan el filtro min_severity — se
+  // entregan aunque la regla pida warn+. No son alertas operativas.
+  const isInformational = alert.kind.startsWith("github_");
 
   for (const rule of rules) {
     if (!rule.active) continue;
     const target = targetsById.get(rule.targetId);
     if (!target || !target.active) continue;
 
-    const minRank = severityRank(rule.minSeverity);
-    if (alertRank < minRank) continue;
+    if (!isInformational) {
+      const minRank = severityRank(rule.minSeverity);
+      if (alertRank < minRank) continue;
+    }
 
     const kinds = parseCsv(rule.alertKindsCsv);
     if (kinds.length > 0 && !kinds.includes(alert.kind)) continue;

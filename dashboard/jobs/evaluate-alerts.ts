@@ -360,7 +360,7 @@ export async function evaluateAlerts() {
         const comp = componentsById.get(pr.componentId);
         candidates.push({
           fingerprint: `github-pr:${comp?.slug ?? pr.componentId}:${pr.number}`,
-          severity: "warn",
+          severity: "info",
           kind: "github_pr_opened",
           title: `PR #${pr.number} abierto en ${comp?.slug ?? "?"}`,
           detail: `${pr.title} · autor: ${pr.author ?? "?"} · ${pr.headRef ?? "?"} → ${pr.baseRef ?? "?"}${pr.htmlUrl ? `\nURL: ${pr.htmlUrl}` : ""}`,
@@ -377,10 +377,10 @@ export async function evaluateAlerts() {
         if (r.draft) continue;
         const channel = (r.channel ?? "").toLowerCase();
         let kind: string | null = null;
-        let sev: "info" | "warn" | "critical" = "info";
-        if (channel === "alpha") { kind = "github_release_alpha"; sev = "info"; }
-        else if (channel === "beta") { kind = "github_release_beta"; sev = "warn"; }
-        else if (channel === "stable") { kind = "github_release_stable"; sev = "warn"; }
+        const sev: "info" | "warn" | "critical" = "info";
+        if (channel === "alpha") kind = "github_release_alpha";
+        else if (channel === "beta") kind = "github_release_beta";
+        else if (channel === "stable") kind = "github_release_stable";
         else continue;
         if (ruleConfig.get(kind)?.enabled === false) continue;
         const comp = componentsById.get(r.componentId);
@@ -406,7 +406,7 @@ export async function evaluateAlerts() {
         const comp = componentsById.get(w.componentId);
         candidates.push({
           fingerprint: `github-workflow-failed:${comp?.slug ?? w.componentId}:${w.id}`,
-          severity: "critical",
+          severity: "info",
           kind: "github_workflow_failed",
           title: `Workflow "${w.name ?? "?"}" falló en ${comp?.slug ?? "?"}/${w.headBranch}`,
           detail: `Run #${w.runNumber ?? "?"} · event: ${w.event ?? "?"}${w.htmlUrl ? `\nURL: ${w.htmlUrl}` : ""}`,

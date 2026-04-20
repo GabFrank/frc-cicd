@@ -49,8 +49,10 @@ export function SummaryCounters({ s }: { s: Summary }) {
   const alertTone =
     s.criticalAlerts > 0 ? "err" : s.warnAlerts > 0 ? "warn" : "ok";
 
+  // Tone de alertas se usa por completitud aunque el contador vive en el sidebar
+  void alertTone;
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
       <Cell
         label="Servidores"
         value={`${s.serversUp} / ${s.serversTotal}`}
@@ -74,12 +76,6 @@ export function SummaryCounters({ s }: { s: Summary }) {
         value={s.versionDriftCount}
         sub={s.versionDriftCount > 0 ? "instancias desactualizadas" : "todo al día"}
         tone={driftTone}
-      />
-      <Cell
-        label="Alertas activas"
-        value={s.totalAlerts}
-        sub={`${s.criticalAlerts} críticas · ${s.warnAlerts} warn`}
-        tone={alertTone}
       />
     </div>
   );

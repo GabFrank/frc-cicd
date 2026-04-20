@@ -101,7 +101,7 @@ export default function OverviewPage() {
       <div className="space-y-4 min-w-0">
         <SummaryCounters s={data.summary} />
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 min-h-[600px]">
+        <div className="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-4 gap-3 min-h-[440px]">
           <CardShell
             title="Servidores"
             count={`${data.summary.serversUp}/${data.summary.serversTotal} up`}

@@ -183,11 +183,11 @@ const ALERT_RULE_DEFAULTS: Array<{
   { kind: "replication_stale", display_name: "Subscription sin mensajes recientes", severity_default: "warn", pending_cycles: 3, resolving_cycles: 3, notes: ">10min warn, >1h critical" },
   { kind: "host_down", display_name: "Host DOWN (correlación)", severity_default: "critical", pending_cycles: 1, resolving_cycles: 3, notes: "Síntesis cuando ≥2 instancias del mismo IP caen simultáneo" },
   { kind: "host_unreachable", display_name: "Host no alcanzable (TCP)", severity_default: "critical", pending_cycles: 1, resolving_cycles: 3, notes: "TCP al host falla 2+ ciclos. Suprime todas las alertas de apps en ese host" },
-  { kind: "github_pr_opened", display_name: "PR abierto en GitHub", severity_default: "warn", pending_cycles: 1, resolving_cycles: 1, notes: "Evento one-shot. No emite 'resolved'" },
-  { kind: "github_release_alpha", display_name: "Release en canal alpha", severity_default: "info", pending_cycles: 1, resolving_cycles: 1, notes: "Evento one-shot" },
-  { kind: "github_release_beta", display_name: "Release en canal beta", severity_default: "warn", pending_cycles: 1, resolving_cycles: 1, notes: "Evento one-shot" },
-  { kind: "github_release_stable", display_name: "Release en canal stable", severity_default: "warn", pending_cycles: 1, resolving_cycles: 1, notes: "Evento one-shot · touches prod" },
-  { kind: "github_workflow_failed", display_name: "Workflow falló en beta/stable", severity_default: "critical", pending_cycles: 1, resolving_cycles: 1, notes: "Solo develop/master/release/beta · evento one-shot" },
+  { kind: "github_pr_opened", display_name: "PR abierto en GitHub", severity_default: "info", pending_cycles: 1, resolving_cycles: 1, notes: "Evento informativo · bypass severity filter" },
+  { kind: "github_release_alpha", display_name: "Release en canal alpha", severity_default: "info", pending_cycles: 1, resolving_cycles: 1, notes: "Evento informativo" },
+  { kind: "github_release_beta", display_name: "Release en canal beta", severity_default: "info", pending_cycles: 1, resolving_cycles: 1, notes: "Evento informativo" },
+  { kind: "github_release_stable", display_name: "Release en canal stable", severity_default: "info", pending_cycles: 1, resolving_cycles: 1, notes: "Evento informativo · touches prod" },
+  { kind: "github_workflow_failed", display_name: "Workflow falló en beta/stable", severity_default: "info", pending_cycles: 1, resolving_cycles: 1, notes: "Evento informativo · no es alerta operativa" },
 ];
 
 function apply0003() {
@@ -280,6 +280,27 @@ function apply0004() {
   if (bumped > 0) console.log(`[migrate] 0004: bumped pending_cycles de ${bumped} kinds ruidosos`);
 }
 
+function apply0006() {
+  // Bajar severity a info para github_* kinds (son informativos, no alertas).
+  // Idempotente: solo actualiza si el valor actual coincide con el seed viejo.
+  const downgrades: Array<{ kind: string; from: string }> = [
+    { kind: "github_pr_opened", from: "warn" },
+    { kind: "github_release_beta", from: "warn" },
+    { kind: "github_release_stable", from: "warn" },
+    { kind: "github_workflow_failed", from: "critical" },
+  ];
+  let d = 0;
+  const stmt = sqlite.prepare(
+    `UPDATE alert_rule_config SET severity_default = 'info', updated_at = CURRENT_TIMESTAMP
+       WHERE kind = ? AND severity_default = ?`,
+  );
+  for (const x of downgrades) {
+    const res = stmt.run(x.kind, x.from);
+    if (res.changes > 0) d += 1;
+  }
+  if (d > 0) console.log(`[migrate] 0006: github_* severity → info (${d} kinds)`);
+}
+
 function apply0002() {
   if (tableExists("notification_targets")) {
     return;
@@ -357,6 +378,7 @@ async function main() {
   apply0003();
   apply0004();
   apply0005();
+  apply0006();
 
   for (const c of COMPONENTS) {
     const existing = db.select().from(schema.components).where(eq(schema.components.slug, c.slug)).all();

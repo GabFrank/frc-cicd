@@ -20,6 +20,22 @@ export function formatAlertMessage(args: {
   const link = `${base}/dashboard/alertas`;
   const who = server?.nombre ?? (alert.serverId != null ? `SERVER #${alert.serverId}` : "GLOBAL");
 
+  // Eventos informativos (GitHub) — formato distinto, sin lenguaje de alerta.
+  if (alert.kind.startsWith("github_")) {
+    const icon =
+      alert.kind === "github_pr_opened" ? "🔀"
+      : alert.kind.startsWith("github_release") ? "🚀"
+      : alert.kind === "github_workflow_failed" ? "⚠️"
+      : "📢";
+    return [
+      `${icon} EVENTO GITHUB`,
+      alert.title,
+      alert.detail ?? null,
+    ]
+      .filter(Boolean)
+      .join("\n");
+  }
+
   if (event === "resolved") {
     let duration: string | null = null;
     if (alert.promotedAt && alert.resolvedAt) {

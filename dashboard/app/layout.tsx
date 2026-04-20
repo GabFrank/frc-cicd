@@ -16,7 +16,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <QueryProvider>
           <div className="min-h-screen flex flex-col">
             <header className="border-b border-border-subtle bg-bg-surface">
-              <div className="max-w-7xl mx-auto px-4 py-3 flex items-center gap-6">
+              <div className="max-w-[1800px] mx-auto px-4 py-3 flex items-center gap-6">
                 <Link href="/dashboard" className="font-bold text-text-primary">
                   FRC · Dashboard
                 </Link>
@@ -31,9 +31,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 </Link>
               </div>
             </header>
-            <main className="flex-1 max-w-7xl w-full mx-auto px-4 py-6">{children}</main>
+            <main className="flex-1 max-w-[1800px] w-full mx-auto px-4 py-6">{children}</main>
             <footer className="border-t border-border-subtle text-xs text-text-muted">
-              <div className="max-w-7xl mx-auto px-4 py-3">
+              <div className="max-w-[1800px] mx-auto px-4 py-3">
                 FRC Sistemas Informáticos · v0.1
               </div>
             </footer>
