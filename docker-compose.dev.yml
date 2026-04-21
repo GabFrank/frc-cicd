@@ -1,0 +1,21 @@
+# Override para desarrollo local — construye la imagen desde source en lugar
+# de pullearla de GHCR. Uso:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml \
+#     --env-file notifications/.env up -d --build
+#
+# En on-prem / producción NO usar este archivo: `docker compose up -d` solo
+# pullea la imagen publicada por GH Actions.
+
+services:
+  dashboard:
+    build: ./dashboard
+    image: frc-dashboard:dev
+
+  jobs:
+    build: ./dashboard
+    image: frc-dashboard:dev
+
+  migrate:
+    build: ./dashboard
+    image: frc-dashboard:dev

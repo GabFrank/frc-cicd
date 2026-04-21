@@ -13,8 +13,7 @@ networks:
 
 services:
   dashboard:
-    build: ./dashboard
-    image: frc-dashboard:latest
+    image: ${DASHBOARD_IMAGE:-ghcr.io/gabfrank/frc-dashboard:latest}
     container_name: frc-dashboard
     restart: unless-stopped
     environment:
@@ -44,8 +43,7 @@ services:
       retries: 3
 
   jobs:
-    build: ./dashboard
-    image: frc-dashboard:latest
+    image: ${DASHBOARD_IMAGE:-ghcr.io/gabfrank/frc-dashboard:latest}
     container_name: frc-dashboard-jobs
     restart: unless-stopped
     environment:
@@ -76,8 +74,7 @@ services:
         condition: service_started
 
   migrate:
-    build: ./dashboard
-    image: frc-dashboard:latest
+    image: ${DASHBOARD_IMAGE:-ghcr.io/gabfrank/frc-dashboard:latest}
     container_name: frc-dashboard-migrate
     environment:
       - DB_PATH=/data/dash.db
