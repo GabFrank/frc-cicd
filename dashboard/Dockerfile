@@ -35,18 +35,16 @@ COPY --from=build /app/lib ./lib
 COPY --from=build /app/drizzle ./drizzle
 COPY --from=build /app/tsconfig.json ./tsconfig.json
 COPY --from=build /app/package.json ./package.json
+COPY --from=build /app/package-lock.json ./package-lock.json
 
-# Native + runtime deps needed por los jobs/migrate (que corren con tsx, no con el bundle standalone)
-COPY --from=build /app/node_modules/tsx ./node_modules/tsx
-COPY --from=build /app/node_modules/esbuild ./node_modules/esbuild
-COPY --from=build /app/node_modules/get-tsconfig ./node_modules/get-tsconfig
-COPY --from=build /app/node_modules/resolve-pkg-maps ./node_modules/resolve-pkg-maps
-COPY --from=build /app/node_modules/better-sqlite3 ./node_modules/better-sqlite3
-COPY --from=build /app/node_modules/bindings ./node_modules/bindings
-COPY --from=build /app/node_modules/file-uri-to-path ./node_modules/file-uri-to-path
-COPY --from=build /app/node_modules/drizzle-orm ./node_modules/drizzle-orm
-COPY --from=build /app/node_modules/dotenv ./node_modules/dotenv
-COPY --from=build /app/node_modules/@octokit ./node_modules/@octokit
+# Para los jobs/migrate (que corren con tsx sobre el source) hace falta todo el
+# árbol de prod deps. Reinstalamos desde el lockfile — evita enumerar
+# transitivas (@octokit → universal-user-agent → ...) una por una.
+# better-sqlite3 requiere build tools para compilar — instalamos, build, quitamos.
+RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ \
+ && npm ci --omit=dev \
+ && apt-get purge -y --auto-remove python3 make g++ \
+ && rm -rf /root/.npm /var/lib/apt/lists/*
 
 RUN mkdir -p /data && chown -R node:node /data /app
 USER node
