@@ -540,6 +540,42 @@ export async function evaluateAlerts() {
       if (dropped > 0) console.log(`[evaluate-alerts] silenced: ${dropped} candidates de ${silencedServers.size} servers (toggle+quiet)`);
     }
 
+    // ========== B0: agrupación de replication_problem por server ==========
+    // Un mismo server suele tener varios slots/subs/pubs. Cuando el enlace
+    // cae, todos aparecen como inactive/missing a la vez → antes: 3+ alertas.
+    // Ahora: ≥2 items del mismo server colapsan en un replication_batch.
+    if (ruleConfig.get("replication_batch")?.enabled !== false) {
+      const replBySrv = new Map<number, typeof candidates>();
+      for (const c of candidates) {
+        if (c.kind !== "replication_problem" || c.serverId == null) continue;
+        const arr = replBySrv.get(c.serverId) ?? [];
+        arr.push(c);
+        replBySrv.set(c.serverId, arr);
+      }
+      for (const [srvId, group] of replBySrv) {
+        if (group.length < 2) continue;
+        const srv = serversById.get(srvId);
+        if (!srv) continue;
+        // Reemplazar las individuales por una batch
+        const groupFps = new Set(group.map((c) => c.fingerprint));
+        const afterBatch = candidates.filter((c) => !groupFps.has(c.fingerprint));
+        candidates.length = 0;
+        candidates.push(...afterBatch);
+        // Severity: si hay al menos un critical (status=missing) → critical, sino warn
+        const batchSev: "warn" | "critical" = group.some((c) => c.severity === "critical") ? "critical" : "warn";
+        const items = group.map((c) => c.title.replace(/ en .+$/, "")).sort();
+        candidates.push({
+          fingerprint: `replication-batch:srv:${srvId}`,
+          severity: batchSev,
+          kind: "replication_batch",
+          serverId: srvId,
+          title: `${group.length} objetos de replicación con problemas en ${srv.nombre}`,
+          detail: items.map((it) => `• ${it}`).join("\n"),
+        });
+        console.log(`[evaluate-alerts] replication batch: srv=${srvId} (${srv.nombre}) colapsa ${group.length} → 1`);
+      }
+    }
+
     // ========== B1: dep-tree suppression ==========
     // Si pg_cluster_down firing para server X, los slots/subs de X aparecen missing/inactive
     // como síntoma — no emitir alertas de replicación encima. Suprime el ruido aditivo.

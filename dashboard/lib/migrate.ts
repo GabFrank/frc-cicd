@@ -183,6 +183,7 @@ const ALERT_RULE_DEFAULTS: Array<{
   { kind: "replication_stale", display_name: "Subscription sin mensajes recientes", severity_default: "warn", pending_cycles: 3, resolving_cycles: 3, notes: ">10min warn, >1h critical" },
   { kind: "host_down", display_name: "Host DOWN (correlación)", severity_default: "critical", pending_cycles: 1, resolving_cycles: 3, notes: "Síntesis cuando ≥2 instancias del mismo IP caen simultáneo" },
   { kind: "host_unreachable", display_name: "Host no alcanzable (TCP)", severity_default: "info", pending_cycles: 1, resolving_cycles: 3, notes: "Severidad escalonada: info <12h, warn 12-24h, critical ≥24h (env HOST_UNREACHABLE_*_AFTER_HOURS)" },
+  { kind: "replication_batch", display_name: "Múltiples objetos de replicación con problemas", severity_default: "warn", pending_cycles: 4, resolving_cycles: 3, notes: "Agrupación: ≥2 replication_problem sobre el mismo server → un único alerta con la lista" },
   { kind: "github_pr_opened", display_name: "PR abierto en GitHub", severity_default: "info", pending_cycles: 1, resolving_cycles: 1, notes: "Evento informativo · bypass severity filter" },
   { kind: "github_release_alpha", display_name: "Release en canal alpha", severity_default: "info", pending_cycles: 1, resolving_cycles: 1, notes: "Evento informativo" },
   { kind: "github_release_beta", display_name: "Release en canal beta", severity_default: "info", pending_cycles: 1, resolving_cycles: 1, notes: "Evento informativo" },
