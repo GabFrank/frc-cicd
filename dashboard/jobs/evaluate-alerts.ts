@@ -154,6 +154,67 @@ export async function evaluateAlerts() {
       return !!(srv?.ip && unreachableIps.has(srv.ip));
     };
 
+    // Silenced servers (alerts_enabled=false OR en quiet window). Declarado acá
+    // arriba porque también lo necesita effectivelyDownServers (peer gating).
+    const timeZone = process.env.WHATSAPP_TZ ?? "America/Asuncion";
+    const nowDate = new Date();
+    const silencedServers = new Set(
+      servers
+        .filter(
+          (s) =>
+            !s.alertsEnabled ||
+            isInQuietWindow(s.quietStart, s.quietEnd, timeZone, nowDate),
+        )
+        .map((s) => s.id),
+    );
+    const isHostFullySilenced = (ip: string): boolean => {
+      const onIp = servers.filter((s) => s.ip === ip);
+      if (onIp.length === 0) return false;
+      return onIp.every((s) => silencedServers.has(s.id));
+    };
+
+    // ========== Precompute: servers "effectively down" ==========
+    // Un server está effectively down cuando:
+    //   - Su IP no responde TCP (host_reachability marca unreachable)
+    //   - Su cluster PG está down (pg_cluster_status.status != 'up')
+    //   - Hay alerta central_down firing para ese server (health_checks DOWN 3 veces)
+    //   - Está silenciado (alerts_enabled=false o quiet window)
+    //
+    // Uso: al generar replication_* sobre un server X que tiene peer Y, si Y está
+    // effectively down, suprimir el candidate — la "caída" de la replicación es
+    // síntoma del peer, no de X. El operador ya recibe alerta del peer.
+    const pgClusterByServer = new Map(
+      db.select().from(schema.pgClusterStatus).all().filter((c) => c.serverId != null).map((c) => [c.serverId!, c]),
+    );
+    const firingCentralDownServers = new Set(
+      db
+        .select()
+        .from(schema.alerts)
+        .all()
+        .filter((a) => a.state === "firing" && a.kind === "central_down" && a.serverId != null)
+        .map((a) => a.serverId!),
+    );
+    const effectivelyDownServers = new Set<number>();
+    for (const s of servers) {
+      if (!s.alertsEnabled || isInQuietWindow(s.quietStart, s.quietEnd, timeZone, nowDate)) {
+        effectivelyDownServers.add(s.id);
+        continue;
+      }
+      if (s.ip && unreachableIps.has(s.ip)) {
+        effectivelyDownServers.add(s.id);
+        continue;
+      }
+      const cluster = pgClusterByServer.get(s.id);
+      if (cluster && cluster.status !== "up" && cluster.status !== "unknown") {
+        effectivelyDownServers.add(s.id);
+        continue;
+      }
+      if (firingCentralDownServers.has(s.id)) {
+        effectivelyDownServers.add(s.id);
+        continue;
+      }
+    }
+
     // ========== Reglas que generan candidates ==========
 
     // Filial deployment rules
@@ -283,6 +344,12 @@ export async function evaluateAlerts() {
         if (isOk) continue;
         const srv = serversById.get(exp.serverId);
         if (!srv) continue;
+        // Peer gating: si el peer de esta replicación está effectively down
+        // (host_unreachable, pg down, central_down, silenced), el síntoma visible
+        // acá es el peer, no este server → suprimir candidate.
+        if (exp.peerServerId != null && effectivelyDownServers.has(exp.peerServerId)) {
+          continue;
+        }
         const sev: "warn" | "critical" = r.status === "missing" ? "critical" : "warn";
         candidates.push({
           fingerprint: `repl:srv:${exp.serverId}:exp:${exp.id}`,
@@ -305,6 +372,7 @@ export async function evaluateAlerts() {
         if (!exp || exp.kind !== "slot" || r.status !== "found") continue;
         const srv = serversById.get(exp.serverId);
         if (!srv) continue;
+        if (exp.peerServerId != null && effectivelyDownServers.has(exp.peerServerId)) continue;
         const extra = r.extraJson ? JSON.parse(r.extraJson) : null;
         const lag: number | null = extra?.lag_bytes ?? null;
         if (lag == null || lag < REPL_LAG_WARN) continue;
@@ -331,6 +399,7 @@ export async function evaluateAlerts() {
         if (!exp || exp.kind !== "subscription" || r.status !== "found") continue;
         const srv = serversById.get(exp.serverId);
         if (!srv) continue;
+        if (exp.peerServerId != null && effectivelyDownServers.has(exp.peerServerId)) continue;
         const extra = r.extraJson ? JSON.parse(r.extraJson) : null;
 
         // apply error: el probeServer registra en subscriptionErrors si apply_error_count>0
@@ -385,28 +454,8 @@ export async function evaluateAlerts() {
       }
     }
 
-    // ========== Per-server alerts toggle + quiet windows ==========
-    // Un server está "silenciado" si:
-    //   - alerts_enabled=false, O
-    //   - ahora está dentro de su quiet_start/quiet_end (ej. filial apaga de noche)
-    // Durante el silencio: no se emiten candidates ni se sintetiza host_*.
-    // Declarado arriba (antes de D/B1/B2) porque todos lo consultan.
-    const timeZone = process.env.WHATSAPP_TZ ?? "America/Asuncion";
-    const nowDate = new Date();
-    const silencedServers = new Set(
-      servers
-        .filter(
-          (s) =>
-            !s.alertsEnabled ||
-            isInQuietWindow(s.quietStart, s.quietEnd, timeZone, nowDate),
-        )
-        .map((s) => s.id),
-    );
-    const isHostFullySilenced = (ip: string): boolean => {
-      const onIp = servers.filter((s) => s.ip === ip);
-      if (onIp.length === 0) return false;
-      return onIp.every((s) => silencedServers.has(s.id));
-    };
+    // (silencedServers + isHostFullySilenced declarados arriba junto con el
+    //  precompute de effectivelyDownServers, ya que todos los gates los consultan.)
 
     // ========== GitHub events (one-shot) ==========
     // PR abierto, release publicada, workflow failed en ramas importantes.
@@ -751,10 +800,29 @@ export async function evaluateAlerts() {
       if (openFingerprints.has(a.fingerprint)) continue;
 
       // Mitigación sync-crash: no auto-resolve reglas que dependen de un job que falló
-      const isReplKind = ["replication_problem", "replication_lag_high", "replication_apply_error", "replication_stale", "pg_cluster_down", "pg_connections_high"].includes(a.kind);
+      const isReplKind = ["replication_problem", "replication_batch", "replication_lag_high", "replication_apply_error", "replication_stale", "pg_cluster_down", "pg_connections_high"].includes(a.kind);
       const isHealthKind = ["central_down", "host_down", "host_unreachable"].includes(a.kind);
       if (isReplKind && !healthyDeps.replication) continue;
       if (isHealthKind && !healthyDeps.health) continue;
+
+      // Gating nuevo: una alerta repl desapareció como candidate porque el peer
+      // bajó (peer-gating). En ese caso, el problema NO se resolvió — el peer
+      // está caído. No auto-resolver; se resuelve cuando el peer vuelva y el
+      // check real vuelva a reportar active=true.
+      if (isReplKind && a.serverId != null) {
+        const ownerSrv = serversById.get(a.serverId);
+        if (ownerSrv) {
+          const peerIds = db
+            .select()
+            .from(schema.expectedReplication)
+            .where(eq(schema.expectedReplication.serverId, a.serverId))
+            .all()
+            .map((e) => e.peerServerId)
+            .filter((id): id is number => id != null);
+          const anyPeerDown = peerIds.some((p) => effectivelyDownServers.has(p));
+          if (anyPeerDown) continue;
+        }
+      }
 
       const conf = ruleConfig.get(a.kind);
       const resolvingCycles = conf?.resolvingCycles ?? 3;
