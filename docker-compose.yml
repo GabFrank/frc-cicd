@@ -33,7 +33,9 @@ services:
     volumes:
       - dash-data:/data
     ports:
-      - "127.0.0.1:3000:3000"
+      # 0.0.0.0 para acceso desde ZeroTier (sin TLS público). Firewall del host
+      # (firewalld/ufw) debe permitir el puerto 3000 en la interfaz correspondiente.
+      - "0.0.0.0:3000:3000"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:
