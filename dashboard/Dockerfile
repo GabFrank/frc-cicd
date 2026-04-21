@@ -36,7 +36,7 @@ COPY --from=build /app/drizzle ./drizzle
 COPY --from=build /app/tsconfig.json ./tsconfig.json
 COPY --from=build /app/package.json ./package.json
 
-# Native + runtime deps needed by the jobs runner (standalone has its own for next)
+# Native + runtime deps needed por los jobs/migrate (que corren con tsx, no con el bundle standalone)
 COPY --from=build /app/node_modules/tsx ./node_modules/tsx
 COPY --from=build /app/node_modules/esbuild ./node_modules/esbuild
 COPY --from=build /app/node_modules/get-tsconfig ./node_modules/get-tsconfig

@@ -66,7 +66,7 @@ services:
       - dash-data:/data
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    command: ["npx", "tsx", "jobs/runner.ts"]
+    command: ["node", "node_modules/tsx/dist/cli.mjs", "jobs/runner.ts"]
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -80,7 +80,7 @@ services:
       - DB_PATH=/data/dash.db
     volumes:
       - dash-data:/data
-    command: ["npx", "tsx", "lib/migrate.ts"]
+    command: ["node", "node_modules/tsx/dist/cli.mjs", "lib/migrate.ts"]
     restart: "no"
 
   evolution-postgres:
