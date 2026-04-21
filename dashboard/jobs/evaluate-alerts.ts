@@ -577,20 +577,33 @@ export async function evaluateAlerts() {
     }
 
     // ========== B1: dep-tree suppression ==========
-    // Si pg_cluster_down firing para server X, los slots/subs de X aparecen missing/inactive
-    // como síntoma — no emitir alertas de replicación encima. Suprime el ruido aditivo.
-    const pgDownServers = new Set(
-      candidates.filter((c) => c.kind === "pg_cluster_down" && c.serverId != null).map((c) => c.serverId!),
+    // Replication solo es un "problema real" si: host accesible + central up +
+    // PG up + replicación caída. Si cualquiera de las dependencias está down,
+    // las alertas de replicación son síntomas del root cause — suprimirlas.
+    //
+    //   pg_cluster_down (DB down)        → skip replication_*  del mismo server
+    //   central_down    (servicio down)  → skip replication_*  del mismo server
+    //
+    // host_unreachable / host_down ya suprimieron en gate D más arriba.
+    const depDownServers = new Set(
+      candidates
+        .filter(
+          (c) =>
+            (c.kind === "pg_cluster_down" || c.kind === "central_down") &&
+            c.serverId != null,
+        )
+        .map((c) => c.serverId!),
     );
     const REPL_KINDS = new Set([
       "replication_problem",
+      "replication_batch",
       "replication_lag_high",
       "replication_apply_error",
       "replication_stale",
     ]);
     let suppressedDep = 0;
     const afterDep = candidates.filter((c) => {
-      if (REPL_KINDS.has(c.kind) && c.serverId != null && pgDownServers.has(c.serverId)) {
+      if (REPL_KINDS.has(c.kind) && c.serverId != null && depDownServers.has(c.serverId)) {
         suppressedDep += 1;
         return false;
       }
