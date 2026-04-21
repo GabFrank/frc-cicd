@@ -1,0 +1,75 @@
+=== HOSTNAME / OS ===
+fedora
+NAME="Fedora Linux"
+VERSION="43 (KDE Plasma Desktop Edition)"
+VERSION_ID=43
+VERSION_CODENAME=""
+
+=== Prereq binarios ===
+openjdk version "25.0.1" 2025-10-21
+OpenJDK Runtime Environment (Red_Hat-25.0.1.0.8-3) (build 25.0.1+8)
+jq-1.8.1
+curl 8.15.0 (x86_64-redhat-linux-gnu) libcurl/8.15.0 OpenSSL/3.5.4 zlib/1.3.1.zlib-ng brotli/1.2.0 libidn2/2.3.8 libpsl/0.21.5 libssh/0.11.3/openssl/zlib nghttp2/1.66.0 OpenLDAP/2.6.10
+/usr/bin/flock
+
+=== PostgreSQL cluster activo ===
+sudo: a password is required
+sudo: a password is required
+
+=== GRANT pg_subscription — franco ===
+sudo: a password is required
+
+=== Systemd units FRC ===
+frc.service                        enabled disabled
+--- frc-filial.service status ---
+Unit frc-filial.service could not be found.
+
+=== Paths legacy vs CI/CD ===
+--- /home/franco/FRC/ ---
+total 153200
+drwxr-xr-x. 1 franco franco       208 mar 21 09:49 .
+drwx------. 1 franco franco       570 abr 16 12:53 ..
+drwxr-xr-x. 1 franco franco        16 mar 18 20:33 backup
+drwxr-xr-x. 1 franco franco        24 feb  7 00:45 .config
+-rwxr-xr-x. 1 franco franco       378 feb  6 23:28 configuracion.json
+-rwxr-xr-x. 1 franco franco       347 feb  6 23:28 configuracion-local.json
+-rwxrwxrwx. 1 franco franco 156832099 mar 21 09:49 FRC.AppImage
+--- /opt/frc-filial/ ---
+--- releases ---
+--- symlink current ---
+no current symlink
+
+=== .env vs application.properties ===
+/opt/frc-filial/.env: MISSING
+-rwxr-xr-x. 1 franco franco 652 feb  7 00:35 /home/franco/FRC/frc-server/application.properties
+
+=== Version actual ===
+no .current-version
+{}
+=== Canal / filial-id / token ===
+no .channel
+no .filial-id
+.github-token: MISSING
+
+=== check-update.sh instalado ===
+check-update.sh: MISSING
+
+=== Cron — referencias a frc ===
+--- crontab -l (user actual) ---
+crontab user: sin referencias frc
+--- /etc/cron.d ---
+/etc/cron.d: sin frc
+--- root crontab ---
+root crontab: sin frc o sudo falla
+
+=== Replication activa en general ===
+sudo: a password is required
+sudo: a password is required
+sudo: a password is required
+
+=== Logs update.log recientes ===
+no update.log
+
+=== Puertos abiertos ===
+
+=== Done mar 21 abr 2026 14:02:06 -03 ===

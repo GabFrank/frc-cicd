@@ -404,29 +404,78 @@ En caso de NO-GO: congelar avance, corregir causa raiz, repetir la fase. No salt
 
 ---
 
-### Fase 11: Dashboard de Monitoreo CI/CD (Dia 16-17)
+### Fase 11: Dashboard de Monitoreo CI/CD (Dia 16-17) ✅ COMPLETADA + EXCEDIDA 2026-04-21
 
-**Objetivo:** Panel visual en tiempo real para TV del equipo. Visibilidad total del estado del CI/CD.
-**Impacto en produccion:** Ninguno. Solo lectura via GitHub API.
+**Alcance original:** panel TV con 4 paneles y datos de GitHub API.
+**Alcance entregado:** aplicación Next.js 15 + SQLite + Drizzle + TanStack Query
+corriendo on-prem en `172.25.0.172`, con mucho más que lo planteado en F11:
+
+- **Registry editable** de 30 servers monitoreados (central + 25 filiales), CRUD por UI en `/dashboard/admin`.
+- **Jobs periódicos** independientes del proceso Next (`runner.ts` con mutex por-job):
+  - `sync-github` (5 min) — releases, workflow_runs, PRs, deployments de los 4 repos.
+  - `sync-health` (1 min) — HTTP `/actuator/health` + `/info` + `/metrics/*` a los hosts registrados. Probe TCP adicional por IP.
+  - `sync-replication` (2 min) — `pg_publication`, `pg_subscription`, `pg_replication_slots`, `pg_stat_replication`, `pg_database_size`, `pg_stat_activity`, `empresarial.sucursal`.
+  - `evaluate-alerts` (1 min) — state machine `pending → firing → resolving → resolved`, 13 kinds con `pending_cycles`/`resolving_cycles` editables.
+  - `notify-alerts` (1 min) — Evolution API (Baileys) + webhook n8n opcional.
+- **Gating anti-ruido robusto:**
+  - `silenced servers` + `quiet windows` per-server (default 23:00–08:15).
+  - `host_unreachable` con severidad escalonada: `info <12h → warn 12-24h → critical ≥24h` (envs configurables).
+  - `replication_batch` colapsa ≥2 problemas del mismo server en una sola alerta.
+  - Peer-gating: auto-inferencia de `peer_server_id` desde `sucursal_id` en el nombre del slot/sub cuando no está seteado.
+  - Suppresión por dep-tree: `host_unreachable` / `pg_cluster_down` / `central_down` en el peer ⇒ las `replication_*` del propio server no disparan.
+- **Notificaciones** a grupo WhatsApp `FRC DEVELOPERS` (JID `120363399770851319@g.us`): 1 fire + 1 resolved (sin resends por intervalo), escalation de severidad emite mensaje extra con prefijo `🔴 ESCALADO A CRITICAL` / `🟡 ESCALADO A WARN`. Eventos GitHub (`github_pr_opened`, `github_release_*`, `github_workflow_failed`) son one-shot con template `📢 EVENTO GITHUB`.
+- **UI**: `/dashboard` overview interactivo, `/tv` fullscreen, admin CRUD completo, modal por alerta, logs de notificación, management de instancia Evolution.
+- **CI/CD propio**: GitHub Actions (`.github/workflows/build-dashboard.yml`) construye imagen multi-stage, publica a `ghcr.io/gabfrank/frc-dashboard:{latest,sha-short}`. Host on-prem hace `docker compose pull && up -d`. Detalles en `dashboard/DEPLOY.md` y `dashboard/STATUS.md`.
+
+Bitácora detallada de refinamiento en commits master de `GabFrank/frc-cicd` (fase 8a-8d del refine).
+
+**Criterio de salida:** ✅ Dashboard accesible en `http://172.25.0.172:3000` (ZeroTier), WhatsApp grupal operativo, jobs corriendo 24/7 con restart automático tras reboot.
+
+---
+
+### Fase 12: Observación dashboard + habilitación Farmacia a beta (en curso) 🟡 2026-04-21
+
+**Objetivo:** Validar el dashboard con el equipo dev durante 7 días antes de atacar la migración de Farmacia. Paralelamente, completar escaneo prereqs para habilitar el canal **beta oficial** en central farmacia y sus 5 filiales.
+
+**Impacto en producción:** Observación (ninguno). Escaneo Farmacia (ninguno — solo lectura).
+
+#### Etapa 12a — Observación dashboard (7 días)
 
 | # | Tarea | Actor |
 |---|---|---|
-| 11.1 | Disenar layout del dashboard (4 paneles) | Dev Lead |
-| 11.2 | Implementar Panel Estado de Filiales: version actual, ultimo update, status por filial, agrupado por empresa | Dev Lead |
-| 11.3 | Implementar Panel Pipeline CI/CD: ultimo build por repo, PRs abiertos, ultimos releases | Dev Lead |
-| 11.4 | Implementar Panel Alertas: filiales desactualizadas, health checks fallidos, rollbacks recientes | Dev Lead |
-| 11.5 | Implementar Panel Metricas: tasa de exito deploys, tiempo promedio build, distribucion de versiones | Dev Lead |
-| 11.6 | Auto-refresh cada 30s, modo TV (fullscreen, sin interaccion) | Dev Lead |
-| 11.7 | Desplegar dashboard (puede ser una app estatica servida desde el droplet o GitHub Pages) | Dev Lead + SysAdmin |
+| 12.1 | Equipo dev accede a `http://172.25.0.172:3000`, explora todas las vistas | Todo el equipo |
+| 12.2 | Reportar bugs / UX / falsos positivos en canal dedicado | Cualquiera |
+| 12.3 | Triage semanal: qué se arregla ya vs qué queda en backlog | Dev Lead |
 
-> **Fuentes de datos (todo via GitHub API):**
-> - `GET /repos/{repo}/deployments` — estado de filiales y deploys centrales
-> - `GET /repos/{repo}/actions/runs` — estado de CI/CD pipelines
-> - `GET /repos/{repo}/releases` — versiones publicadas
-> - `GET /repos/{repo}/pulls` — PRs abiertos
-> - Convenciones de nombre en `.filial-id`: `{empresa}-filial-{numero}-{os}`
+**Ver:** [`ESTADO_DASHBOARD.md`](ESTADO_DASHBOARD.md) para login, URLs y cómo reportar.
 
-**Criterio de salida:** Dashboard visible en TV, actualizado en tiempo real, mostrando estado de todos los componentes.
+#### Etapa 12b — Escaneo Farmacia (solo lectura)
+
+| # | Tarea | Actor |
+|---|---|---|
+| 12.4 | Ejecutar `scans/scan-central-farmacia.sh` contra `172.25.1.200` | SysAdmin + LT |
+| 12.5 | Ejecutar `scans/scan-filial-linux.sh` contra `172.25.3.{1,4,5}` | SysAdmin |
+| 12.6 | Ejecutar `scans/scan-filial-windows.ps1` contra `172.25.3.{2,3}` | SysAdmin |
+| 12.7 | Consolidar tabla matriz de blockers por host | LT |
+| 12.8 | Reportar go/no-go para Etapa 12c | LT |
+
+**Artefactos generados:** `scans/farmacia-YYYY-MM-DD/` con output por host + reporte consolidado.
+
+#### Etapa 12c — Migración central Farmacia a beta (bloqueada por 12b)
+
+Runbook autoritativo: [`runbook-migracion-central-beta.md`](runbook-migracion-central-beta.md) (Phase A→B→C→D).
+
+**Decisión de user tomada 2026-04-21:** `deploy` (match con piloto `:8084`, sudoers ya existen).
+
+#### Etapa 12d — Migración filiales Farmacia a beta (una por vez)
+
+Runbooks: [`runbook-migracion-filial-linux-beta.md`](runbook-migracion-filial-linux-beta.md), [`runbook-migracion-filial-windows-beta.md`](runbook-migracion-filial-windows-beta.md).
+
+**Decisión de user tomada 2026-04-21:** filiales siguen como `franco` (sin SSH deploy desde CI; `check-update.sh` es independiente del user del servicio).
+
+**Orden sugerido:** 1 piloto (filial menos crítica) → 24h observación → resto (una por una). Cada ventana individual ≤30 min.
+
+**Criterio de salida Fase 12:** Farmacia (central + 5 filiales) corriendo en canal `beta`, receiving `workflow_dispatch` deploys con aprobación. Dashboard marca ambos en `beta` sin drift.
 
 ---
 

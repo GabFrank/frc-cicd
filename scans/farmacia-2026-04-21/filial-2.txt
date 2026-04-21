@@ -1,0 +1,100 @@
+--- hostname ---
+SUC-GASUR
+--- os ---
+
+Platform ServicePack Version      VersionString                    
+-------- ----------- -------      -------------                    
+ Win32NT             10.0.19045.0 Microsoft Windows NT 10.0.19045.0
+
+
+
+--- java ---
+java : java version "1.8.0_351"
+En l¡nea: 1 Car cter: 18
++ "--- java ---"; (java -version 2>&1) | Select-Object -First 2
++                  ~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (java version "1.8.0_351":String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+Java(TM) SE Runtime Environment (build 1.8.0_351-b10)
+--- services frc ---
+
+Status  Name       DisplayName               
+------  ----       -----------               
+Running frc-server FRC-SYS (powered by WinSW)
+
+
+
+--- path C:\FRC ---
+
+
+    Directorio: C:\FRC
+
+
+Mode          LastWriteTime    Length Name                                  
+----          -------------    ------ ----                                  
+d-----  19/5/2025     14:58           backup                                
+d-----  7/10/2024     20:56           docker                                
+d-----  20/3/2026     16:48           frc-server                            
+d----- 25/10/2022     15:45           resources                             
+d-----  10/1/2023     15:08           update                                
+-a----  26/4/2025     10:07  42922795 07 Sa~o Paulo e Sul (1).pdf           
+-a----  26/4/2025     10:05  42922795 07 Sa~o Paulo e Sul.pdf               
+-a----  26/4/2025     10:59 165503408 07_Beleza.pdf                         
+-a----  7/10/2024     20:53  32217469 bkp.sql                               
+-a----  16/4/2025     12:12  40987417 Ciclo 0625 (1).pdf                    
+-a----  16/4/2025     11:33  40987417 Ciclo 0625.pdf                        
+-a---- 25/10/2022     13:42 112605792 dbeaver-ce-22.2.3-x86_64-setup.exe    
+-a----  19/1/2023     09:47        86 delete.bat                            
+-a---- 25/10/2022     13:44 567359824 Docker Desktop Installer.exe          
+-a----  3/11/2022     12:11  81611501 frc-app Setup 2.0.6.exe               
+-a---- 11/11/2023     15:20  98143187 frc-server.jar                        
+-a----  19/5/2025     15:09  98119413 FRC.exe                               
+-a----  17/2/2023     14:44  89734048 FRC.Setup.2.1.3.exe                   
+-a----  30/3/2023     13:34  83747240 FRC.Setup.2.1.6.exe                   
+-a----  8/10/2024     08:47  24771088 Impresion (1).exe                     
+-a----  11/9/2023     07:55      2347 impresion (1).txt                     
+-a----  9/11/2024     08:23  24771088 Impresion (2).exe                     
+-a----  11/9/2023     07:39       784 impresion (2).txt                     
+-a----  9/11/2024     08:30  24771088 Impresion (3).exe                     
+-a----  8/10/2024     08:34  24771088 Impresion.exe                         
+-a----  10/9/2023     20:07       885 impresion.txt                         
+-a---- 25/10/2022     13:43   2834236 POS.Printer.Driver.Setup.V11.3.0.0.zip
+-a----  18/1/2023     19:48        20 start.bat                             
+-a----  18/1/2023     19:48        21 stop.bat                              
+-a----  10/9/2023     20:04       885 update-filial.bat.txt                 
+
+
+
+--- path C:\opt\frc-filial ---
+
+--- path C:\Users\franco\FRC ---
+
+--- tasks frc ---
+
+--- postgres service ---
+
+--- .current-version ---
+MISSING
+--- .channel ---
+MISSING
+--- .filial-id ---
+MISSING
+--- .github-token ---
+MISSING
+--- check-update.ps1 ---
+MISSING
+--- actuator 8082 ---
+123
+125
+--- puertos ---
+
+LocalPort OwningProcess
+--------- -------------
+     8082          6212
+     5551         11596
+     5551          1520
+
+
+
+--- Done ---

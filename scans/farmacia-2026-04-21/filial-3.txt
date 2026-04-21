@@ -1,0 +1,76 @@
+=== HOSTNAME / OS ===
+localhost.localdomain
+NAME="Fedora Linux"
+VERSION="38 (Server Edition)"
+VERSION_ID=38
+VERSION_CODENAME=""
+
+=== Prereq binarios ===
+openjdk version "17.0.11" 2024-04-16
+OpenJDK Runtime Environment (Red_Hat-17.0.11.0.9-1) (build 17.0.11+9)
+bash: línea 10: jq: orden no encontrada
+jq: MISSING
+curl 8.0.1 (x86_64-redhat-linux-gnu) libcurl/8.0.1 OpenSSL/3.0.9 zlib/1.2.13 brotli/1.0.9 libidn2/2.3.7 libpsl/0.21.2 (+libidn2/2.3.4) libssh/0.10.6/openssl/zlib nghttp2/1.52.0 OpenLDAP/2.6.6
+/usr/bin/flock
+
+=== PostgreSQL cluster activo ===
+sudo: a password is required
+sudo: a password is required
+
+=== GRANT pg_subscription — franco ===
+sudo: a password is required
+
+=== Systemd units FRC ===
+frc.service                        enabled disabled
+--- frc-filial.service status ---
+Unit frc-filial.service could not be found.
+
+=== Paths legacy vs CI/CD ===
+--- /home/franco/FRC/ ---
+total 278396
+drwxr-xr-x.  8 franco franco      4096 mar 20 11:53 .
+drwx------. 24 franco franco      8192 abr 13 14:34 ..
+drwxr-xr-x.  3 franco franco        22 may 19  2025 backup
+drwxr-xr-x.  3 franco franco        26 may 19  2025 .config
+-rwxrwxrwx.  1 root   root         379 oct 11  2023 configuracion.json
+-rwxrwxrwx.  1 root   root         347 oct 11  2023 configuracion-local.json
+-rwxrwxrwx.  1 franco franco 156832099 mar 20 11:54 FRC.AppImage
+--- /opt/frc-filial/ ---
+--- releases ---
+--- symlink current ---
+no current symlink
+
+=== .env vs application.properties ===
+/opt/frc-filial/.env: MISSING
+-rwxrwxrwx. 1 root root 614 nov 27 15:00 /home/franco/FRC/frc-server/application.properties
+
+=== Version actual ===
+no .current-version
+{}
+=== Canal / filial-id / token ===
+no .channel
+no .filial-id
+.github-token: MISSING
+
+=== check-update.sh instalado ===
+check-update.sh: MISSING
+
+=== Cron — referencias a frc ===
+--- crontab -l (user actual) ---
+crontab user: sin referencias frc
+--- /etc/cron.d ---
+/etc/cron.d: sin frc
+--- root crontab ---
+root crontab: sin frc o sudo falla
+
+=== Replication activa en general ===
+sudo: a password is required
+sudo: a password is required
+sudo: a password is required
+
+=== Logs update.log recientes ===
+no update.log
+
+=== Puertos abiertos ===
+
+=== Done mar 21 abr 2026 14:02:59 -03 ===

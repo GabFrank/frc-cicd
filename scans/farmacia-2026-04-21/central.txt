@@ -1,0 +1,117 @@
+=== HOSTNAME / OS ===
+frc-servidor
+NAME="Fedora Linux"
+VERSION="39 (Cloud Edition)"
+VERSION_ID=39
+VERSION_CODENAME=""
+
+=== Users existentes ===
+uid=1000(franco) gid=1000(franco) groups=1000(franco),10(wheel),1001(lpadmin)
+uid=1003(deploy) gid=1004(deploy) groups=1004(deploy)
+
+=== Sudoers entries para deploy ===
+sudoers.d/deploy-frc: MISSING o sudo requiere password
+
+=== Systemd unit actual — frc-farmacia.service ===
+● frc-farmacia.service - FRC Sistemas Integrados - Farmacia
+     Loaded: loaded (/etc/systemd/system/frc-farmacia.service; enabled; preset: disabled)
+    Drop-In: /usr/lib/systemd/system/service.d
+             └─10-timeout-abort.conf
+     Active: active (running) since Wed 2026-04-01 09:56:27 -03; 2 weeks 6 days ago
+   Main PID: 2068054 (java)
+      Tasks: 62 (limit: 9470)
+     Memory: 499.9M
+        CPU: 2h 50min 7.044s
+     CGroup: /system.slice/frc-farmacia.service
+             └─2068054 /usr/bin/java -jar /home/franco/farma/FRC/frc-server/frc-server.jar
+
+--- unit file ---
+[Unit]
+Description=FRC Sistemas Integrados - Farmacia
+After=network.target
+
+[Service]
+Type=simple
+User=franco
+WorkingDirectory=/home/franco/farma/FRC/frc-server/
+ExecStart=/usr/bin/java -jar /home/franco/farma/FRC/frc-server/frc-server.jar
+SuccessExitStatus=143
+
+[Install]
+WantedBy=multi-user.target
+
+=== Paths — legacy vs CI/CD pool ===
+--- /home/franco/farma/FRC/frc-server/ ---
+total 316580
+drwxr-xr-x. 1 franco franco       120 Apr 11 13:16 .
+drwxr-xr-x. 1 franco franco       112 May 19  2025 ..
+-rwxr-xr-x. 1 franco franco       606 Nov 27 11:34 application.properties
+-rw-r--r--. 1 franco franco 161731503 Mar 18 20:22 frc-server_bkp.jar
+-rw-r--r--. 1 franco franco 162436470 Mar 18 20:24 frc-server.jar
+drwx------. 1 franco franco        32 May 29  2025 tokens
+--- /opt/frc-backend-central/farmacia/ ---
+total 12
+drwxr-xr-x. 1 deploy deploy  54 Apr  1 09:53 .
+drwxr-xr-x. 1 deploy deploy  76 Apr 14 16:13 ..
+lrwxrwxrwx. 1 deploy deploy  39 Mar 30 14:11 current -> /opt/frc-backend-central/releases/3.0.9
+-rw-r--r--. 1 deploy deploy   6 Mar 30 14:11 .current-version
+-rw-------. 1 deploy deploy 278 Apr  1 09:53 .env
+--- /opt/frc-backend-central/releases/ ---
+total 0
+drwxr-xr-x. 1 deploy deploy 358 Apr 17 16:23 .
+drwxr-xr-x. 1 deploy deploy  76 Apr 14 16:13 ..
+drwxr-xr-x. 1 deploy deploy  44 Mar 30 13:43 3.0.10
+drwxr-xr-x. 1 deploy deploy  44 Mar 26 16:16 3.0.9
+drwxr-xr-x. 1 deploy deploy  44 Apr  7 15:33 3.1.0-alpha.12
+drwxr-xr-x. 1 deploy deploy  44 Apr  7 16:10 3.1.0-alpha.13
+drwxr-xr-x. 1 deploy deploy   0 Mar 27 15:20 3.1.0-alpha.2
+drwxr-xr-x. 1 deploy deploy  44 Mar 27 15:23 3.1.0-alpha.3
+drwxr-xr-x. 1 deploy deploy  44 Mar 28 11:59 3.1.0-alpha.4
+--- symlink current ---
+/opt/frc-backend-central/releases/3.0.9
+
+=== Version actual (3.0.9 esperado) ===
+3.0.9
+--- actuator/info ---
+{}
+=== Config del JAR — .env vs application.properties ===
+.env: EXISTS —  lineas
+-rwxr-xr-x. 1 franco franco 606 Nov 27 11:34 /home/franco/farma/FRC/frc-server/application.properties
+
+=== Java ===
+bash: line 49: /opt/frc-backend-central/farmacia/.env: Permission denied
+openjdk version "11.0.25" 2024-10-15
+OpenJDK Runtime Environment (Red_Hat-11.0.25.0.9-1) (build 11.0.25+9)
+
+=== PostgreSQL cluster 5551 ===
+sudo: a password is required
+sudo: a password is required
+
+=== GRANT pg_subscription — franco ===
+sudo: a password is required
+
+=== Replication — publicaciones/suscripciones existentes ===
+--- pubs ---
+sudo: a password is required
+--- subs ---
+sudo: a password is required
+--- slots ---
+sudo: a password is required
+
+=== empresarial.sucursal — IPs hardcoded (riesgo DB clonada) ===
+sudo: a password is required
+
+=== Schedulers replicación en application.properties legacy ===
+no config legacy o sudo falla
+
+=== deploy.sh en pool ===
+no deploy.sh en instancias
+no deploy.sh en releases
+
+=== Cronjobs referenciando paths legacy ===
+
+=== Sync-health del dashboard ve este host ===
+
+=== Puertos abiertos por procesos FRC ===
+
+=== Done Tue Apr 21 02:01:48 PM -03 2026 ===
