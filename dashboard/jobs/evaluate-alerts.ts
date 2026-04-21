@@ -765,6 +765,12 @@ export async function evaluateAlerts() {
 
       // Alerta existente
       if (existing.state === "resolved") {
+        // github_* es one-shot: una vez notificado y auto-resuelto por
+        // notify-alerts, NO re-seedear aunque el candidate siga apareciendo
+        // durante la ventana de 2h. El evento ya se comunicó.
+        if (c.kind.startsWith("github_")) {
+          continue;
+        }
         // Reseed: limpiar notification_state para forzar re-fire
         db.delete(schema.notificationState).where(eq(schema.notificationState.alertFingerprint, c.fingerprint)).run();
         const newState = pendingCycles <= 1 ? "firing" : "pending";
