@@ -130,9 +130,20 @@ export default function AlertasConfigPage() {
         </table>
       </div>
 
-      <p className="text-xs text-text-muted">
-        Los cambios se aplican en el próximo ciclo de <code>evaluate-alerts</code> (default 60s).
-      </p>
+      <div className="card text-xs text-text-muted space-y-1">
+        <p><strong className="text-text-secondary">Cambios</strong> — se aplican en el próximo ciclo de <code>evaluate-alerts</code> (default 60s).</p>
+        <p>
+          <strong className="text-text-secondary">Escala de <code>host_unreachable</code></strong> — severidad dinámica según horas sin respuesta TCP:{" "}
+          <span className="pill pill-info">info</span> &lt;12h, <span className="pill pill-warn">warn</span> 12–24h,{" "}
+          <span className="pill pill-err">critical</span> ≥24h. Umbrales editables vía env{" "}
+          <code>HOST_UNREACHABLE_WARN_AFTER_HOURS</code> y <code>HOST_UNREACHABLE_CRITICAL_AFTER_HOURS</code>.
+        </p>
+        <p>
+          <strong className="text-text-secondary">Re-envíos</strong> — las <code>notification_rules</code> con{" "}
+          <code>resend_interval_min = 0</code> no re-envían por intervalo (default nuevo). Cada alerta dispara{" "}
+          <em>1 fire</em> + <em>1 resolved</em>. Cada escalation de severidad dispara 1 notificación adicional automáticamente.
+        </p>
+      </div>
     </div>
   );
 }

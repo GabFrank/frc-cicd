@@ -34,8 +34,12 @@ export async function POST(req: NextRequest) {
   const targetId = Number(r.lastInsertRowid);
   // Auto-create default rule: warn+, resend 60min, todas las alertas.
   // Editable después desde /dashboard/notificaciones/rules.
+  // resendIntervalMin=0 = sin re-notificar por intervalo. Cada alerta dispara
+  // 1 fire + 1 resolved (+ 1 extra por cada escalation de severidad). El user
+  // puede subirlo manualmente desde /dashboard/notificaciones/rules si quiere
+  // recordatorios periódicos para alertas persistentes.
   db.insert(schema.notificationRules)
-    .values({ targetId, minSeverity: "warn", resendIntervalMin: 60, active: true })
+    .values({ targetId, minSeverity: "warn", resendIntervalMin: 0, active: true })
     .run();
   return NextResponse.json({ id: targetId, defaultRuleCreated: true }, { status: 201 });
 }

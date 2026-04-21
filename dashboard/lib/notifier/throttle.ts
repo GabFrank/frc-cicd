@@ -85,8 +85,14 @@ export function shouldSendOpenAlert(args: {
     return { action: "send", eventKind: "resend" };
   }
 
+  // resend_interval_min <= 0 → nunca re-notificar por intervalo. La única
+  // razón para volver a enviar es la escalation de severidad, ya atendida arriba.
+  if (rule.resendIntervalMin <= 0) {
+    return { action: "skip", reason: "throttle" };
+  }
+
   const lastSent = new Date(state.lastSentAt).getTime();
-  const intervalMs = Math.max(1, rule.resendIntervalMin) * 60_000;
+  const intervalMs = rule.resendIntervalMin * 60_000;
   if (!Number.isFinite(lastSent)) {
     return { action: "send", eventKind: "resend" };
   }

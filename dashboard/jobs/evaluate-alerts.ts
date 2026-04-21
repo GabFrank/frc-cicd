@@ -23,6 +23,24 @@ const REPL_STALE_CRIT_SEC = Number(process.env.REPL_STALE_CRIT_SEC ?? 3600); // 
 const PG_CONN_WARN = Number(process.env.PG_CONN_WARN ?? 0);
 const PG_CONN_CRIT = Number(process.env.PG_CONN_CRIT ?? 0);
 
+// host_unreachable: 3 tramos de severidad según cuánto lleva un host sin
+// responder TCP. La inestabilidad de red es banal (info); recién a las 12h
+// amerita atención (warn) y a las 24h es claramente no transitorio (critical).
+const HOST_UNREACHABLE_WARN_HOURS = Number(process.env.HOST_UNREACHABLE_WARN_AFTER_HOURS ?? 12);
+const HOST_UNREACHABLE_CRIT_HOURS = Number(process.env.HOST_UNREACHABLE_CRITICAL_AFTER_HOURS ?? 24);
+
+function hostUnreachableSeverity(lastReachableAt: string | null | undefined): "info" | "warn" | "critical" {
+  if (!lastReachableAt) return "info";
+  const t = lastReachableAt.trim();
+  const withZ = /(?:Z|[+-]\d{2}:?\d{2})$/.test(t) ? t.replace(" ", "T") : `${t.replace(" ", "T")}Z`;
+  const last = new Date(withZ).getTime();
+  if (!Number.isFinite(last)) return "info";
+  const hours = (Date.now() - last) / 3_600_000;
+  if (hours >= HOST_UNREACHABLE_CRIT_HOURS) return "critical";
+  if (hours >= HOST_UNREACHABLE_WARN_HOURS) return "warn";
+  return "info";
+}
+
 interface RuleConfig {
   kind: string;
   pendingCycles: number;
@@ -490,17 +508,19 @@ export async function evaluateAlerts() {
       candidates.push(...afterHost);
 
       // Emitir un host_unreachable por IP, listando servers afectados.
+      // Severidad escalonada: info (<12h), warn (12-24h), critical (≥24h).
       for (const ip of unreachableIps) {
-        if (isHostFullySilenced(ip)) continue; // todos los servers en esa IP silenciados
+        if (isHostFullySilenced(ip)) continue;
         const affected = servers.filter((s) => s.ip === ip).map((s) => s.nombre);
         const row = reachabilityRows.find((r) => r.ip === ip);
         const since = row?.lastReachableAt ?? row?.lastProbeAt ?? "desconocido";
+        const sev = hostUnreachableSeverity(row?.lastReachableAt);
         candidates.push({
           fingerprint: `host-unreachable:ip:${ip}`,
-          severity: "critical",
+          severity: sev,
           kind: "host_unreachable",
           title: `Host ${ip} no alcanzable (TCP)`,
-          detail: `Probe TCP falla hace ${row?.consecutiveUnreachable ?? "?"} ciclos · puerto ${row?.probePort ?? "?"} · último OK: ${since}. Servers afectados: ${affected.join(", ")}.`,
+          detail: `IP ${ip} · último OK: ${since} · afectados: ${affected.join(", ")}`,
         });
       }
       if (suppressedByHost > 0) {

@@ -120,6 +120,7 @@ export async function notifyAlerts() {
           alert,
           server: server ?? null,
           event: decision.eventKind === "fired" ? "fired" : "resend",
+          previousSeverity: st?.lastSeverity ?? null,
           dashboardBaseUrl: dashboardBase,
         });
 

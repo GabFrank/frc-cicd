@@ -182,7 +182,7 @@ const ALERT_RULE_DEFAULTS: Array<{
   { kind: "replication_apply_error", display_name: "Apply error en subscription", severity_default: "critical", pending_cycles: 2, resolving_cycles: 3, notes: "PG 15+ · transitorio en restart" },
   { kind: "replication_stale", display_name: "Subscription sin mensajes recientes", severity_default: "warn", pending_cycles: 3, resolving_cycles: 3, notes: ">10min warn, >1h critical" },
   { kind: "host_down", display_name: "Host DOWN (correlación)", severity_default: "critical", pending_cycles: 1, resolving_cycles: 3, notes: "Síntesis cuando ≥2 instancias del mismo IP caen simultáneo" },
-  { kind: "host_unreachable", display_name: "Host no alcanzable (TCP)", severity_default: "critical", pending_cycles: 1, resolving_cycles: 3, notes: "TCP al host falla 2+ ciclos. Suprime todas las alertas de apps en ese host" },
+  { kind: "host_unreachable", display_name: "Host no alcanzable (TCP)", severity_default: "info", pending_cycles: 1, resolving_cycles: 3, notes: "Severidad escalonada: info <12h, warn 12-24h, critical ≥24h (env HOST_UNREACHABLE_*_AFTER_HOURS)" },
   { kind: "github_pr_opened", display_name: "PR abierto en GitHub", severity_default: "info", pending_cycles: 1, resolving_cycles: 1, notes: "Evento informativo · bypass severity filter" },
   { kind: "github_release_alpha", display_name: "Release en canal alpha", severity_default: "info", pending_cycles: 1, resolving_cycles: 1, notes: "Evento informativo" },
   { kind: "github_release_beta", display_name: "Release en canal beta", severity_default: "info", pending_cycles: 1, resolving_cycles: 1, notes: "Evento informativo" },
@@ -278,6 +278,26 @@ function apply0004() {
     if (res.changes > 0) bumped += 1;
   }
   if (bumped > 0) console.log(`[migrate] 0004: bumped pending_cycles de ${bumped} kinds ruidosos`);
+}
+
+function apply0008() {
+  // Normalizar configs vigentes al refine de ruido:
+  // 1) host_unreachable: bajar severity_default critical → info (si sigue en el viejo default).
+  // 2) Alerts actualmente firing de host_unreachable como critical → info,
+  //    así el próximo tick las reasigna al tramo correcto según horas acumuladas.
+  // 3) notification_rules.resend_interval_min = 60 (default viejo) → 0 (no resend por intervalo).
+  const r1 = sqlite
+    .prepare(`UPDATE alert_rule_config SET severity_default='info', updated_at=CURRENT_TIMESTAMP WHERE kind='host_unreachable' AND severity_default='critical'`)
+    .run();
+  if (r1.changes > 0) console.log(`[migrate] 0008: host_unreachable severity_default critical → info`);
+  const r2 = sqlite
+    .prepare(`UPDATE alerts SET severity='info' WHERE kind='host_unreachable' AND resolved_at IS NULL AND severity='critical'`)
+    .run();
+  if (r2.changes > 0) console.log(`[migrate] 0008: normalizadas ${r2.changes} alertas host_unreachable firing`);
+  const r3 = sqlite
+    .prepare(`UPDATE notification_rules SET resend_interval_min=0 WHERE resend_interval_min=60`)
+    .run();
+  if (r3.changes > 0) console.log(`[migrate] 0008: ${r3.changes} rules con resend_interval_min 60 → 0 (disabled)`);
 }
 
 function apply0007() {
@@ -397,6 +417,7 @@ async function main() {
   apply0005();
   apply0006();
   apply0007();
+  apply0008();
 
   for (const c of COMPONENTS) {
     const existing = db.select().from(schema.components).where(eq(schema.components.slug, c.slug)).all();

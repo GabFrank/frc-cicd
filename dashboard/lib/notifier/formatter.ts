@@ -9,13 +9,22 @@ function severityEmoji(sev: string): string {
   return "🔵";
 }
 
+function severityRank(s: string): number {
+  if (s === "critical") return 3;
+  if (s === "warn") return 2;
+  return 1;
+}
+
 export function formatAlertMessage(args: {
   alert: Alert;
   server?: MonitoredServer | null;
   event: AlertFormatEvent;
+  /** Severidad con la que se notificó por última vez. Si la actual es mayor,
+   *  el mensaje se formatea como escalation. */
+  previousSeverity?: string | null;
   dashboardBaseUrl: string;
 }): string {
-  const { alert, server, event, dashboardBaseUrl } = args;
+  const { alert, server, event, previousSeverity, dashboardBaseUrl } = args;
   const base = dashboardBaseUrl.replace(/\/$/, "");
   const link = `${base}/dashboard/alertas`;
   const who = server?.nombre ?? (alert.serverId != null ? `SERVER #${alert.serverId}` : "GLOBAL");
@@ -63,7 +72,19 @@ export function formatAlertMessage(args: {
       .join("\n");
   }
 
-  const tag = event === "resend" ? "ACTUALIZACIÓN DE ALERTA" : "NUEVA ALERTA";
+  // Si es resend y la severidad subió respecto al último envío, renderizar
+  // como escalation con prefijo explícito.
+  const escalated =
+    event === "resend" &&
+    previousSeverity != null &&
+    severityRank(alert.severity) > severityRank(previousSeverity);
+  let tag: string;
+  if (escalated) {
+    tag = alert.severity === "critical" ? "ESCALADO A CRITICAL" : "ESCALADO A WARN";
+  } else {
+    tag = event === "resend" ? "ACTUALIZACIÓN DE ALERTA" : "NUEVA ALERTA";
+  }
+
   return [
     `${severityEmoji(alert.severity)} ${tag}`,
     `SEVERIDAD: ${alert.severity.toUpperCase()}`,
