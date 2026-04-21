@@ -281,6 +281,38 @@ function apply0004() {
   if (bumped > 0) console.log(`[migrate] 0004: bumped pending_cycles de ${bumped} kinds ruidosos`);
 }
 
+function apply0009() {
+  // Backfill peer_server_id en expected_replication por convención de naming.
+  // Si el nombre del slot/sub/pub contiene un número que matchea exactamente
+  // con monitored_servers.sucursal_id (y ese server no es el owner), setearlo.
+  // Idempotente: solo toca rows con peer_server_id IS NULL.
+  const rows = sqlite
+    .prepare(`SELECT id, server_id, name FROM expected_replication WHERE peer_server_id IS NULL`)
+    .all() as Array<{ id: number; server_id: number; name: string }>;
+  const servers = sqlite
+    .prepare(`SELECT id, sucursal_id FROM monitored_servers WHERE sucursal_id IS NOT NULL`)
+    .all() as Array<{ id: number; sucursal_id: number }>;
+  const bySuc = new Map<number, number[]>();
+  for (const s of servers) {
+    const arr = bySuc.get(s.sucursal_id) ?? [];
+    arr.push(s.id);
+    bySuc.set(s.sucursal_id, arr);
+  }
+  const upd = sqlite.prepare(`UPDATE expected_replication SET peer_server_id = ? WHERE id = ?`);
+  let count = 0;
+  for (const r of rows) {
+    const m = r.name.match(/\d+/);
+    if (!m) continue;
+    const cand = bySuc.get(Number(m[0])) ?? [];
+    const others = cand.filter((id) => id !== r.server_id);
+    if (others.length === 1) {
+      upd.run(others[0], r.id);
+      count += 1;
+    }
+  }
+  if (count > 0) console.log(`[migrate] 0009: backfill peer_server_id en ${count} expected_replication rows`);
+}
+
 function apply0008() {
   // Normalizar configs vigentes al refine de ruido:
   // 1) host_unreachable: bajar severity_default critical → info (si sigue en el viejo default).
@@ -419,6 +451,7 @@ async function main() {
   apply0006();
   apply0007();
   apply0008();
+  apply0009();
 
   for (const c of COMPONENTS) {
     const existing = db.select().from(schema.components).where(eq(schema.components.slug, c.slug)).all();

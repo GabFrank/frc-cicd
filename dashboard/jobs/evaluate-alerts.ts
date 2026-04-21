@@ -215,6 +215,31 @@ export async function evaluateAlerts() {
       }
     }
 
+    // Helper: si expected.peerServerId no está seteado, intenta inferir peer
+    // por convención de naming: el nombre del slot/sub contiene el sucursal_id
+    // (ej. `central10_sub` / `filial10_sub` → sucursal 10 → Suc. Katuete 2).
+    // Si hay exactamente un server con sucursal_id igual al número extraído,
+    // ese es el peer.
+    const serversBySucursal = new Map<number, typeof servers[number][]>();
+    for (const s of servers) {
+      if (s.sucursalId == null) continue;
+      const arr = serversBySucursal.get(s.sucursalId) ?? [];
+      arr.push(s);
+      serversBySucursal.set(s.sucursalId, arr);
+    }
+    const inferPeerServerId = (exp: { peerServerId: number | null; name: string; serverId: number }): number | null => {
+      if (exp.peerServerId != null) return exp.peerServerId;
+      const m = exp.name.match(/\d+/);
+      if (!m) return null;
+      const suc = Number(m[0]);
+      const cand = serversBySucursal.get(suc);
+      if (!cand || cand.length === 0) return null;
+      // Excluir al mismo owner (los nombres suelen contener sufijos del lado propio)
+      const others = cand.filter((s) => s.id !== exp.serverId);
+      if (others.length === 1) return others[0].id;
+      return null;
+    };
+
     // ========== Reglas que generan candidates ==========
 
     // Filial deployment rules
@@ -347,7 +372,8 @@ export async function evaluateAlerts() {
         // Peer gating: si el peer de esta replicación está effectively down
         // (host_unreachable, pg down, central_down, silenced), el síntoma visible
         // acá es el peer, no este server → suprimir candidate.
-        if (exp.peerServerId != null && effectivelyDownServers.has(exp.peerServerId)) {
+        const peerId = inferPeerServerId(exp);
+        if (peerId != null && effectivelyDownServers.has(peerId)) {
           continue;
         }
         const sev: "warn" | "critical" = r.status === "missing" ? "critical" : "warn";
@@ -372,7 +398,8 @@ export async function evaluateAlerts() {
         if (!exp || exp.kind !== "slot" || r.status !== "found") continue;
         const srv = serversById.get(exp.serverId);
         if (!srv) continue;
-        if (exp.peerServerId != null && effectivelyDownServers.has(exp.peerServerId)) continue;
+        const peerId = inferPeerServerId(exp);
+        if (peerId != null && effectivelyDownServers.has(peerId)) continue;
         const extra = r.extraJson ? JSON.parse(r.extraJson) : null;
         const lag: number | null = extra?.lag_bytes ?? null;
         if (lag == null || lag < REPL_LAG_WARN) continue;
@@ -399,7 +426,8 @@ export async function evaluateAlerts() {
         if (!exp || exp.kind !== "subscription" || r.status !== "found") continue;
         const srv = serversById.get(exp.serverId);
         if (!srv) continue;
-        if (exp.peerServerId != null && effectivelyDownServers.has(exp.peerServerId)) continue;
+        const peerId = inferPeerServerId(exp);
+        if (peerId != null && effectivelyDownServers.has(peerId)) continue;
         const extra = r.extraJson ? JSON.parse(r.extraJson) : null;
 
         // apply error: el probeServer registra en subscriptionErrors si apply_error_count>0
@@ -817,7 +845,7 @@ export async function evaluateAlerts() {
             .from(schema.expectedReplication)
             .where(eq(schema.expectedReplication.serverId, a.serverId))
             .all()
-            .map((e) => e.peerServerId)
+            .map((e) => inferPeerServerId(e))
             .filter((id): id is number => id != null);
           const anyPeerDown = peerIds.some((p) => effectivelyDownServers.has(p));
           if (anyPeerDown) continue;
