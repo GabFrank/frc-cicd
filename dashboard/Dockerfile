@@ -25,8 +25,7 @@ ENV PORT=3000
 RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
  && rm -rf /var/lib/apt/lists/*
 
-# Next.js standalone bundle
-COPY --from=build /app/public ./public
+# Next.js standalone bundle (public/ no existe en este proyecto — sin assets estáticos propios)
 COPY --from=build /app/.next/standalone ./
 COPY --from=build /app/.next/static ./.next/static
 
