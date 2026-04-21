@@ -30,6 +30,7 @@ services:
       - N8N_ALERT_WEBHOOK_URL=${N8N_ALERT_WEBHOOK_URL:-}
       - DASHBOARD_PUBLIC_URL=${DASHBOARD_PUBLIC_URL:-http://127.0.0.1:3000}
       - WHATSAPP_TZ=${WHATSAPP_TZ:-America/Asuncion}
+      - SESSION_COOKIE_SECURE=${SESSION_COOKIE_SECURE:-false}
     volumes:
       - dash-data:/data
     ports:

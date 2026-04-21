@@ -11,11 +11,19 @@ export function sessionOptions(): SessionOptions {
   if (!password || password.length < 32) {
     throw new Error("SESSION_SECRET must be set and >=32 chars");
   }
+  // `secure: true` requiere HTTPS — el browser no reenvía la cookie sobre HTTP.
+  // En deploys on-prem sin TLS (ej. ZeroTier) hace falta desactivarlo.
+  // Default: activar en production salvo que SESSION_COOKIE_SECURE=false.
+  const secureEnv = process.env.SESSION_COOKIE_SECURE?.toLowerCase();
+  const secure =
+    secureEnv === "true" ? true :
+    secureEnv === "false" ? false :
+    process.env.NODE_ENV === "production";
   return {
     password,
     cookieName: "frc-dash-session",
     cookieOptions: {
-      secure: process.env.NODE_ENV === "production",
+      secure,
       httpOnly: true,
       sameSite: "lax",
     },
