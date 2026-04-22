@@ -322,6 +322,33 @@ ssh franco@IP_FILIAL 'powershell -Command "Get-Content C:\frc-filial\logs\spring
 
 > ⚠️ No usar `logging.file.name` — ese key es Spring Boot 2.2+, los beta del filial usan 2.1.x.
 
+### `application.properties` externo — override de valores hardcoded en el JAR
+
+Igual que en Linux: el JAR beta trae `sucursalId=24`, `facturaCountDown=0`, `ipServidorCentral=localhost:8081`, `jarPath=/Users/gabfranck/Downloads/` hardcoded en el `application.properties` embebido. El `.env` con `SUCURSALID=<N>` no garantiza sobrescribir (se observó en filial 2 que el valor embebido `sucursalId=24` ganó → INSERTs de `operaciones.cobro` con `sucursal_id=24` violan FK).
+
+**Fix**: crear `C:\frc-filial\application.properties` con los valores correctos — Spring Boot lo lee desde el WorkingDirectory con mayor precedencia que el JAR classpath.
+
+```powershell
+$content = @"
+sucursalId=<N>
+facturaCountDown=<valor per filial — leer del legacy C:\FRC\frc-server\application.properties>
+ipServidorCentral=159.203.86.103:8082
+jarPath=C:\frc-filial\current
+user.home=C:\frc-filial
+homepath=C:\frc-filial
+"@
+[System.IO.File]::WriteAllText("C:\frc-filial\application.properties", $content)
+
+# Restart
+Get-Process java | Stop-Process -Force
+schtasks /Run /TN FRC-Filial-Server
+```
+
+`facturaCountDown` varía por filial:
+```powershell
+Select-String -Path C:\FRC\frc-server\application.properties -Pattern facturaCountDown
+```
+
 ### Schedulers de replicación — desactivar hasta normalizar naming
 
 Igual que en el central y en las filiales Linux, los schedulers del JAR beta esperan publicaciones/suscripciones con naming `farmacia_filialN_*` pero cada filial tiene un naming legacy distinto. Deja ~30 errores/h en `docker logs postgres` y en `spring.log`.

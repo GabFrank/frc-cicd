@@ -119,6 +119,48 @@ El directorio puede ser pesado (imágenes de productos). En filiales con catálo
 
 **Si hay update del logo posterior**: copiarlo a **ambas** rutas (legacy y pool) o marcar la legacy como read-only y dejar solo el pool. Decisión pendiente de documentar.
 
+### `application.properties` externo — override de valores hardcoded en el JAR
+
+El JAR beta del filial trae un `application.properties` **embebido** (`BOOT-INF/classes/application.properties`) con varios valores que quedaron hardcoded en el repo de desarrollo y **no son sobrescribibles con `.env` solo**. Razón: el código lee varias keys como `sucursalId`, `facturaCountDown`, `ipServidorCentral`, `jarPath`, etc. en camelCase directo (`@Value("${sucursalId}")` o `System.getProperty("sucursalId")`). El script `check-update.sh`/`start-filial.sh` convierte `KEY_NAME` del `.env` a `-Dkey.name` (lowercase + puntos), lo cual con Spring Boot *relaxed binding* debería matchear — pero el behavior no es 100% consistente y en la filial 2 Windows se observó que el valor `sucursalId=24` del JAR predominó sobre el `SUCURSALID=2` del `.env`, rompiendo INSERTs de `operaciones.cobro` con violación de FK.
+
+**Valores hardcoded en el JAR (verificar con `unzip -p frc-filial-server.jar BOOT-INF/classes/application.properties`):**
+
+| Key | Valor embebido | Debe ser |
+|---|---|---|
+| `sucursalId` | `24` | **per filial (1..N)** |
+| `facturaCountDown` | `0` | **por filial** — leer del legacy `/home/franco/FRC/frc-server/application.properties` |
+| `ipServidorCentral` | `localhost:8081` | IP:puerto del central (ej. `159.203.86.103:8082`) |
+| `jarPath` | `/Users/gabfranck/Downloads/` (path del dev laptop) | `/opt/frc-filial/current` |
+
+**Fix**: crear `application.properties` en el working directory del pool (`/opt/frc-filial/application.properties`). Spring Boot lo lee con **mayor precedencia** que el classpath del JAR.
+
+```bash
+cat > /opt/frc-filial/application.properties <<EOF
+sucursalId=${SUCURSAL_ID}
+facturaCountDown=${FCD_PER_FILIAL}
+ipServidorCentral=159.203.86.103:8082
+jarPath=/opt/frc-filial/current
+user.home=/opt/frc-filial
+homepath=/opt/frc-filial
+EOF
+chown franco:franco /opt/frc-filial/application.properties
+chmod 644 /opt/frc-filial/application.properties
+sudo systemctl restart frc.service
+```
+
+**`facturaCountDown`** difiere por filial — leer del legacy antes de aplicar:
+```bash
+grep facturaCountDown /home/franco/FRC/frc-server/application.properties
+```
+
+**Verificación post-restart** — que el cobro opere sin FK error:
+```bash
+PGPASSWORD=franco psql -h localhost -p 5551 -U franco -d general -c \
+  "SELECT MAX(id), MAX(creado_en) FROM operaciones.cobro"
+```
+
+Si el último `creado_en` es reciente y sigue creciendo = app inserta con `sucursal_id` correcto.
+
 ### Schedulers de replicación — desactivar hasta normalizar naming
 
 La app Spring Boot del filial incluye los mismos schedulers que el central (`ReplicationPublicationSyncScheduler` cada 1h + `ReplicationRefreshScheduler` cada 2h). Tras migrar al canal beta, intenta `ALTER PUBLICATION farmacia_filialN_pub ADD TABLE ...` / `ALTER SUBSCRIPTION farmacia_filialN_central_sub REFRESH ...`, pero la publicación/suscripción en la filial tiene un **nombre legacy distinto** (ej. `filial5_pub`, `filial_farmacia_5_pub`, `central_filial_5_sub`, etc. — la nomenclatura varía filial por filial). Resultado: ~30 errores `no existe la publicación "farmacia_filialN_pub"` cada hora en el log de postgres + journalctl.
