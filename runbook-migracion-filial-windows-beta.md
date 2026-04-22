@@ -288,6 +288,60 @@ psql -U franco -d general -c "SELECT subname, received_lsn, latest_end_time FROM
 
 ---
 
+### Recursos de impresión — `C:\FRC\resources\` legacy
+
+La app lee logo de ticket + imágenes de producto desde `$USER_HOME\FRC\resources\`. Con `USER_HOME=C:\frc-filial` en el `.env` del pool CI/CD, busca `C:\frc-filial\FRC\resources\`. Esa carpeta **no se crea automático**.
+
+Síntoma si no se copia: al imprimir el primer ticket post-migración, excepción `FileNotFoundException` por `logo.png` o cualquier imagen de producto.
+
+**Copiar antes del cutover (recomendado robocopy porque hay muchos archivos):**
+
+```powershell
+New-Item -ItemType Directory -Force -Path C:\frc-filial\FRC\resources | Out-Null
+robocopy C:\FRC\resources C:\frc-filial\FRC\resources /E /NFL /NDL
+# Verificar
+(Get-Item C:\frc-filial\FRC\resources\images\logo.png).Length
+(Get-ChildItem C:\frc-filial\FRC\resources -Recurse -File).Count
+```
+
+`robocopy` es más robusto que `Copy-Item -Recurse` para árboles con miles de imágenes (no crashea por un archivo locked y retoma). Exit code 1 significa "OK con archivos copiados" — **NO** es error.
+
+**Logging a archivo — `LOGGING_FILE` en `.env`**
+
+Por default `start-filial.ps1` lanza Java con `-WindowStyle Hidden` sin redirect de stdout/stderr — los logs se pierden (equivalente a `> /dev/null`). Para tener un `tail -f` funcional en Windows, agregar al `.env`:
+
+```env
+LOGGING_FILE=C:\frc-filial\logs\spring.log
+```
+
+Spring Boot 2.1.x interpreta eso como `-Dlogging.file=...` y escribe el archivo directamente (con rotación interna de logback). Ver en vivo desde tu máquina:
+
+```bash
+ssh franco@IP_FILIAL 'powershell -Command "Get-Content C:\frc-filial\logs\spring.log -Wait -Tail 80"'
+```
+
+> ⚠️ No usar `logging.file.name` — ese key es Spring Boot 2.2+, los beta del filial usan 2.1.x.
+
+### Schedulers de replicación — desactivar hasta normalizar naming
+
+Igual que en el central y en las filiales Linux, los schedulers del JAR beta esperan publicaciones/suscripciones con naming `farmacia_filialN_*` pero cada filial tiene un naming legacy distinto. Deja ~30 errores/h en `docker logs postgres` y en `spring.log`.
+
+**Agregar al `.env` del pool (`C:\frc-filial\.env`, sin BOM):**
+
+```env
+REPLICATION_SYNC_ENABLED=false
+REPLICATION_REFRESH_ENABLED=false
+```
+
+Reiniciar el proceso Java (matar + relanzar Task):
+
+```powershell
+Get-Process java | Stop-Process -Force
+schtasks /Run /TN FRC-Filial-Server
+```
+
+**Mantener en `false`** hasta renombrar la replicación via `setupFullReplication(sucursalId=N)` GraphQL desde el desktop (que limpia y recrea con naming estándar).
+
 ## Pre-checklist
 
 - [ ] **Central ya migrado** y desplegando versiones beta

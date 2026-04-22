@@ -100,6 +100,43 @@ PGPASSWORD=$DB_PASSWORD psql -U franco -d general -c "SELECT subname, received_l
 
 ---
 
+### Recursos de impresión — `resources/` legacy
+
+La app lee el logo del ticket y las fotos de productos desde `$USER_HOME/FRC/resources/`. En el layout legacy eso es `/home/franco/FRC/resources/`. El pool CI/CD apunta `USER_HOME=/opt/frc-filial`, entonces el binario va a buscar `/opt/frc-filial/FRC/resources/` que **no se crea solo**.
+
+Síntoma si no se copia: al imprimir un ticket la app tira `FileNotFoundException` por `logo.png` o cualquier imagen de producto.
+
+**Copiar antes del primer ticket post-migración:**
+
+```bash
+sudo mkdir -p /opt/frc-filial/FRC
+sudo cp -r /home/franco/FRC/resources /opt/frc-filial/FRC/resources
+sudo chown -R franco:franco /opt/frc-filial/FRC
+ls /opt/frc-filial/FRC/resources/images/logo.png   # debe existir
+```
+
+El directorio puede ser pesado (imágenes de productos). En filiales con catálogo grande son miles de archivos JPG — copia recursiva puede tardar segundos.
+
+**Si hay update del logo posterior**: copiarlo a **ambas** rutas (legacy y pool) o marcar la legacy como read-only y dejar solo el pool. Decisión pendiente de documentar.
+
+### Schedulers de replicación — desactivar hasta normalizar naming
+
+La app Spring Boot del filial incluye los mismos schedulers que el central (`ReplicationPublicationSyncScheduler` cada 1h + `ReplicationRefreshScheduler` cada 2h). Tras migrar al canal beta, intenta `ALTER PUBLICATION farmacia_filialN_pub ADD TABLE ...` / `ALTER SUBSCRIPTION farmacia_filialN_central_sub REFRESH ...`, pero la publicación/suscripción en la filial tiene un **nombre legacy distinto** (ej. `filial5_pub`, `filial_farmacia_5_pub`, `central_filial_5_sub`, etc. — la nomenclatura varía filial por filial). Resultado: ~30 errores `no existe la publicación "farmacia_filialN_pub"` cada hora en el log de postgres + journalctl.
+
+**Agregar al `.env` del pool:**
+
+```env
+REPLICATION_SYNC_ENABLED=false
+REPLICATION_REFRESH_ENABLED=false
+```
+
+Reiniciar el servicio:
+```bash
+sudo systemctl restart frc.service
+```
+
+**Mantener en `false` hasta** que las publicaciones/suscripciones se renombren al estándar `farmacia_filialN_*` (vía `setupFullReplication(sucursalId=N)` GraphQL desde el desktop, que es idempotente y limpia+recrea con el naming nuevo). Re-activar solo cuando los nombres actuales coincidan con los que el scheduler espera.
+
 ## Pre-checklist
 
 - [ ] **Central ya migrado** y desplegando versiones beta
