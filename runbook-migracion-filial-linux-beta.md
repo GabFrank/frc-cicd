@@ -156,10 +156,21 @@ grep facturaCountDown /home/franco/FRC/frc-server/application.properties
 **Verificación post-restart** — que el cobro opere sin FK error:
 ```bash
 PGPASSWORD=franco psql -h localhost -p 5551 -U franco -d general -c \
-  "SELECT MAX(id), MAX(creado_en) FROM operaciones.cobro"
+  "SELECT id, sucursal_id, creado_en FROM operaciones.cobro ORDER BY id DESC LIMIT 5"
 ```
 
-Si el último `creado_en` es reciente y sigue creciendo = app inserta con `sucursal_id` correcto.
+Si el último `creado_en` es reciente y `sucursal_id` coincide con el de la filial = app inserta correcto.
+
+**¿Y la data que se intentó grabar con `sucursal_id=24` antes del fix?** Nada. El constraint `cobro_sucursal_fk` (+ análogos en las otras tablas) rechazan el INSERT con `ERROR 23503 violates foreign key constraint`; Spring `@Transactional` hace rollback completo → **ninguna fila se persiste**. Los errores quedan en logs pero la base queda consistente. Confirmación:
+
+```bash
+# Cero filas con sucursal inválida tras el fix
+PGPASSWORD=franco psql -h localhost -p 5551 -U franco -d general -tAc \
+  "SELECT COUNT(*) FROM operaciones.cobro
+    WHERE sucursal_id NOT IN (SELECT id FROM empresarial.sucursal)"
+```
+
+Los cobros que el operador tenía "pendientes de sincronizar" en la UI del desktop FRC se re-envían al server arreglado y se graban ahora con el `sucursal_id` correcto.
 
 ### Schedulers de replicación — desactivar hasta normalizar naming
 

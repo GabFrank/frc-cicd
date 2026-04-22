@@ -349,6 +349,23 @@ schtasks /Run /TN FRC-Filial-Server
 Select-String -Path C:\FRC\frc-server\application.properties -Pattern facturaCountDown
 ```
 
+**Verificación post-restart** — que el cobro opere sin FK error:
+```powershell
+docker exec postgres psql -U postgres -d general -c `
+  "SELECT id, sucursal_id, creado_en FROM operaciones.cobro ORDER BY id DESC LIMIT 5"
+```
+
+Si el último `creado_en` es reciente y `sucursal_id` = número de la filial = fix OK.
+
+**¿Y la data con `sucursal_id=24` previa al fix?** Ninguna queda persistida. El FK `cobro_sucursal_fk` (y los análogos en `conteo`, `pdv_caja`, `venta`, `movimiento_caja`, etc.) rechaza el INSERT con `ERROR 23503`; Spring `@Transactional` hace rollback → nada se graba. Los errores llenan `spring.log` pero la base queda consistente. Confirmar con:
+
+```powershell
+docker exec postgres psql -U postgres -d general -tAc `
+  "SELECT COUNT(*) FROM operaciones.cobro WHERE sucursal_id NOT IN (SELECT id FROM empresarial.sucursal)"
+```
+
+Los cobros que el operador tenía "pendientes de sincronizar" en la UI del desktop FRC se re-envían al server arreglado y se graban con `sucursal_id` correcto.
+
 ### Schedulers de replicación — desactivar hasta normalizar naming
 
 Igual que en el central y en las filiales Linux, los schedulers del JAR beta esperan publicaciones/suscripciones con naming `farmacia_filialN_*` pero cada filial tiene un naming legacy distinto. Deja ~30 errores/h en `docker logs postgres` y en `spring.log`.
