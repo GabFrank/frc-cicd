@@ -291,6 +291,16 @@ Cada paso loguea warning si falla pero continúa con el siguiente.
 
 1. **User del servicio: `deploy`** (decidido 2026-04-21). Razón: el workflow CI/CD del repo central ya hace `ssh deploy@172.25.1.200`, el piloto beta `:8084` ya corre con `deploy`, y las entries en `/etc/sudoers.d/deploy-frc` ya están aplicadas (verificado en piloto). Ir con `franco` implicaría modificar el workflow, regenerar SSH keys, y romper simetría con bodega y alpha — zero upside. Path: chown `/opt/frc-backend-central/farmacia/` a `deploy`, `User=deploy` en unit.
 2. **Cluster postgres 5551 compartido** con bodega/alpha (sin separación). Riesgo acotado — ya es así para bodega estable.
+3. **Schedulers de replicación DESACTIVADOS (2026-04-22)**. Las filiales en canal beta todavía tienen publicaciones con naming legacy (`filial5_pub` en vez de `farmacia_filial5_pub`). Con el scheduler activo, `ReplicationPublicationSyncScheduler` falla cada 1h con `no existe la publicación "farmacia_filialX_pub"` para cada filial, y `ReplicationRefreshScheduler` intenta conectar a filiales inexistentes. Son errores inofensivos pero llenan journalctl con ~30 líneas por filial cada hora. Se desactivan vía `.env` del central farmacia:
+
+   ```env
+   REPLICATION_SYNC_ENABLED=false
+   REPLICATION_REFRESH_ENABLED=false
+   ```
+
+   **Mantener en `false`** hasta que las publicaciones/suscripciones de todas las filiales se renombren al estándar `farmacia_filialN_*` (o se migre la lógica del scheduler para aceptar el naming legacy). Re-activar solo cuando:
+   - Todas las filiales tienen `farmacia_filialN_pub` / `farmacia_filialN_sub` con los nombres nuevos, O
+   - Se documenta un mapping de nombres que el scheduler debe honrar.
 
 ## Decisiones pendientes
 
