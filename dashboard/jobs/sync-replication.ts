@@ -11,8 +11,6 @@ interface Result {
 interface SubscriptionErrorInfo {
   applyErrorCount: number;
   syncErrorCount: number;
-  lastErrorTime: string | null;
-  lastErrorMessage: string | null;
 }
 
 interface ServerProbe {
@@ -179,11 +177,8 @@ export async function probeServer(server: typeof schema.monitoredServers.$inferS
             subname: string;
             apply_error_count: number;
             sync_error_count: number;
-            last_error_time: string | null;
-            last_error_message: string | null;
           }>(
-            `SELECT subname, apply_error_count, sync_error_count,
-                    last_error_time::text, last_error_message
+            `SELECT subname, apply_error_count, sync_error_count
              FROM pg_stat_subscription_stats`,
           );
           for (const e of errs.rows) {
@@ -191,8 +186,6 @@ export async function probeServer(server: typeof schema.monitoredServers.$inferS
               probe.subscriptionErrors.set(e.subname, {
                 applyErrorCount: e.apply_error_count ?? 0,
                 syncErrorCount: e.sync_error_count ?? 0,
-                lastErrorTime: e.last_error_time,
-                lastErrorMessage: e.last_error_message,
               });
             }
           }
