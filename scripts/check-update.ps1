@@ -26,7 +26,7 @@ foreach ($line in $envContent) {
     if ($line -match "^SERVER_PORT=(.+)") { $HEALTH_PORT = $Matches[1].Trim() }
 }
 $HEALTH_URL = "http://localhost:$HEALTH_PORT/actuator/health"
-$HEALTH_TIMEOUT = 120
+$HEALTH_TIMEOUT = 240
 $HEALTH_INTERVAL = 5
 
 # --- Logging ---

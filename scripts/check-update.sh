@@ -20,7 +20,7 @@ SERVICE_NAME="frc-filial.service"
 REPO="GabFrank/franco-system-backend-filial"
 HEALTH_PORT=$(grep -s SERVER_PORT "${BASE_DIR}/.env" | cut -d= -f2 || echo "8080")
 HEALTH_URL="http://localhost:${HEALTH_PORT}/actuator/health"
-HEALTH_TIMEOUT=120
+HEALTH_TIMEOUT=240
 HEALTH_INTERVAL=5
 
 # --- Logging ---
