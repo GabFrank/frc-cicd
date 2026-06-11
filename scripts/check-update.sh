@@ -16,7 +16,11 @@ TOKEN_FILE="${BASE_DIR}/.github-token"
 FILIAL_ID_FILE="${BASE_DIR}/.filial-id"
 LOG_FILE="${BASE_DIR}/logs/update.log"
 JAR_NAME="frc-filial-server.jar"
-SERVICE_NAME="frc-filial.service"
+# El unit systemd se llama frc.service en toda la flota (farmacia + bodega), y el
+# NOPASSWD sudoers está configurado para frc.service. Usar frc-filial.service hace
+# que `sudo systemctl restart` no matchee ninguna regla NOPASSWD -> pide password ->
+# falla bajo cron y el servicio nunca se reinicia (drift: marker avanza, proceso no).
+SERVICE_NAME="frc.service"
 REPO="GabFrank/franco-system-backend-filial"
 HEALTH_PORT=$(grep -s SERVER_PORT "${BASE_DIR}/.env" | cut -d= -f2 || echo "8080")
 HEALTH_URL="http://localhost:${HEALTH_PORT}/actuator/health"
