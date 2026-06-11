@@ -142,7 +142,8 @@ PREVIOUS_VERSION="${CURRENT_VERSION}"
 
 echo "Updating symlink: current -> ${RELEASE_DIR}"
 ln -sfn "${RELEASE_DIR}" "${CURRENT_LINK}"
-echo "${LATEST_VERSION}" > "${VERSION_FILE}"
+# .current-version is written only after the running jar is verified below, so a
+# failed restart can never leave the marker ahead of the live process.
 
 echo "Restarting ${SERVICE_NAME}..."
 sudo systemctl restart "${SERVICE_NAME}"
@@ -157,7 +158,15 @@ while [[ ${ELAPSED} -lt ${HEALTH_TIMEOUT} ]]; do
   HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${HEALTH_URL}" 2>/dev/null || echo "000")
 
   if [[ "${HTTP_STATUS}" == "200" || "${HTTP_STATUS}" == "503" ]]; then
-    echo "Health check PASSED (HTTP ${HTTP_STATUS}) at ${ELAPSED}s"
+    # Verify the RUNNING jar is actually the new version; /actuator/health alone
+    # gives a false positive when a stale process is still answering on the port.
+    RUNNING_VERSION=$(curl -s "http://localhost:${HEALTH_PORT}/api/version" 2>/dev/null | jq -r '.version // empty')
+    if [[ "${RUNNING_VERSION}" != "${LATEST_VERSION}" ]]; then
+      echo "Health ${HTTP_STATUS} but running version '${RUNNING_VERSION}' != ${LATEST_VERSION}; still booting, retrying..."
+      continue
+    fi
+    echo "${LATEST_VERSION}" > "${VERSION_FILE}"
+    echo "Health check PASSED (HTTP ${HTTP_STATUS}, version ${RUNNING_VERSION}) at ${ELAPSED}s"
     echo "Successfully updated to ${LATEST_VERSION}"
     notify_github "${LATEST_VERSION}" "success" "Health check passed (HTTP ${HTTP_STATUS})"
     exit 0

@@ -16,6 +16,7 @@ $FILIAL_ID_FILE = "$BASE_DIR\.filial-id"
 $LOG_FILE = "$BASE_DIR\logs\update.log"
 $JAR_NAME = "frc-filial-server.jar"
 $SERVICE_NAME = "frc-filial"
+$SERVER_TASK = "FRC-Filial-Server"   # Scheduled Task that owns the server process (Windows equivalent of systemd)
 $REPO = "GabFrank/franco-system-backend-filial"
 $JAVA_EXE = "java"
 
@@ -114,35 +115,39 @@ if (Test-Path $CURRENT_LINK) {
     Remove-Item $CURRENT_LINK -Force -ErrorAction SilentlyContinue
 }
 cmd /c mklink /J "$CURRENT_LINK" "$RELEASE_DIR"
-Set-Content -Path $VERSION_FILE -Value $LATEST_VERSION
+# NOTE: .current-version is written only after the running jar is verified below,
+# so a failed restart can never leave the marker ahead of the live process.
 
-# Restart service
-Log "Restarting $SERVICE_NAME..."
-$javaProcess = Get-Process -Name "java" -ErrorAction SilentlyContinue | Where-Object {
-    $_.CommandLine -like "*frc-filial*" -or $_.Path -like "*frc-filial*"
+# Restart service via the Scheduled Task (Windows equivalent of `systemctl restart`).
+# Delegating the process lifecycle to the task is what makes the new jar survive: a
+# bare Start-Process is tied to the caller's session/job and dies when check-update
+# exits (or the SSH session closes). The task owns the process independently.
+#
+# Stop the task, then kill whatever still OWNS the app port. On Windows
+# Get-Process.CommandLine is null unless elevated, so the legacy CommandLine matcher
+# never killed the running jar -> it kept holding the port -> the new jar failed to
+# bind and died silently while the stale one answered health checks. Match by port
+# owner, then wait until the port is actually free before relaunching.
+Log "Stopping $SERVER_TASK and freeing port $HEALTH_PORT..."
+Stop-ScheduledTask -TaskName $SERVER_TASK -ErrorAction SilentlyContinue
+$owners = @(Get-NetTCPConnection -LocalPort $HEALTH_PORT -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique)
+foreach ($procId in $owners) {
+    Log "  killing PID $procId"
+    Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue
 }
-if ($javaProcess) {
-    Stop-Process -Id $javaProcess.Id -Force -ErrorAction SilentlyContinue
-    Start-Sleep -Seconds 2
+$freeWait = 0
+while ((Get-NetTCPConnection -LocalPort $HEALTH_PORT -State Listen -ErrorAction SilentlyContinue) -and $freeWait -lt 30) {
+    Start-Sleep -Seconds 2; $freeWait += 2
+}
+if (Get-NetTCPConnection -LocalPort $HEALTH_PORT -State Listen -ErrorAction SilentlyContinue) {
+    Log "ERROR: port $HEALTH_PORT still in use after ${freeWait}s, aborting update"
+    exit 1
 }
 
-# Read .env and build Spring properties as -D flags
-$envArgs = @()
-foreach ($line in (Get-Content "$BASE_DIR\.env")) {
-    if ($line -match "^([^=]+)=(.*)$") {
-        $key = $Matches[1].Trim()
-        $val = $Matches[2].Trim()
-        # Convert SPRING_DATASOURCE_URL to spring.datasource.url format
-        $prop = $key.ToLower().Replace("_", ".")
-        $envArgs += "-D$prop=$val"
-    }
-}
-$envString = $envArgs -join " "
-
-# Start Java process with properties
-$jarPath = "$CURRENT_LINK\$JAR_NAME"
-$allArgs = "$envString -jar `"$jarPath`""
-Start-Process -FilePath $JAVA_EXE -ArgumentList $allArgs -WorkingDirectory $BASE_DIR -WindowStyle Hidden -RedirectStandardOutput "$BASE_DIR\logs\app.log" -RedirectStandardError "$BASE_DIR\logs\app-error.log"
+# Launch the new version through the task. The task starts java from the `current`
+# junction, which now points at $RELEASE_DIR, so it picks up the freshly downloaded jar.
+Log "Starting $SERVER_TASK..."
+Start-ScheduledTask -TaskName $SERVER_TASK
 
 # --- Health check ---
 Log "Waiting for health check at $HEALTH_URL (timeout: ${HEALTH_TIMEOUT}s)..."
@@ -159,7 +164,19 @@ while ($elapsed -lt $HEALTH_TIMEOUT) {
     }
 
     if ($status -eq 200 -or $status -eq 503) {
-        Log "Health check PASSED (HTTP $status) at ${elapsed}s"
+        # Verify the RUNNING jar is actually the new version. /actuator/health alone
+        # gives a false positive when a stale process is still answering on the port.
+        $runningVersion = ""
+        try {
+            $vResp = Invoke-RestMethod -Uri "http://localhost:$HEALTH_PORT/api/version" -TimeoutSec 5
+            $runningVersion = $vResp.version
+        } catch { $runningVersion = "" }
+        if ($runningVersion -ne $LATEST_VERSION) {
+            Log "Health $status but running version '$runningVersion' != $LATEST_VERSION; still booting, retrying..."
+            continue
+        }
+        Set-Content -Path $VERSION_FILE -Value $LATEST_VERSION
+        Log "Health check PASSED (HTTP $status, version $runningVersion) at ${elapsed}s"
         Log "Successfully updated to $LATEST_VERSION"
 
         # Notify GitHub
@@ -187,16 +204,19 @@ Log "ERROR: Health check failed after ${HEALTH_TIMEOUT}s"
 
 if ($PREVIOUS_VERSION -ne "none" -and (Test-Path "$RELEASES_DIR\$PREVIOUS_VERSION")) {
     Log "Rolling back to $PREVIOUS_VERSION..."
-    $javaProcess = Get-Process -Name "java" -ErrorAction SilentlyContinue | Where-Object {
-        $_.CommandLine -like "*frc-filial*"
+    $rbOwners = @(Get-NetTCPConnection -LocalPort $HEALTH_PORT -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique)
+    foreach ($procId in $rbOwners) { Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue }
+    $rbWait = 0
+    while ((Get-NetTCPConnection -LocalPort $HEALTH_PORT -State Listen -ErrorAction SilentlyContinue) -and $rbWait -lt 30) {
+        Start-Sleep -Seconds 2; $rbWait += 2
     }
-    if ($javaProcess) { Stop-Process -Id $javaProcess.Id -Force -ErrorAction SilentlyContinue }
 
     cmd /c rmdir "$CURRENT_LINK" 2>$null
     cmd /c mklink /J "$CURRENT_LINK" "$RELEASES_DIR\$PREVIOUS_VERSION"
     Set-Content -Path $VERSION_FILE -Value $PREVIOUS_VERSION
 
-    Start-Process -FilePath $JAVA_EXE -ArgumentList "$envString -jar `"$CURRENT_LINK\$JAR_NAME`"" -WorkingDirectory $BASE_DIR -WindowStyle Hidden
+    Stop-ScheduledTask -TaskName $SERVER_TASK -ErrorAction SilentlyContinue
+    Start-ScheduledTask -TaskName $SERVER_TASK
     Log "Rollback complete. Restarted with version $PREVIOUS_VERSION"
 
     # Notify GitHub failure
