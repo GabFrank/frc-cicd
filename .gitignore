@@ -15,6 +15,9 @@ frc-dashboard-config-*.json
 # Claude Code local config (contains SSH passwords in permission rules)
 .claude/settings.local.json
 
+# Helper local de SSH a hosts de prod (lee credenciales del .env)
+frcssh.sh
+
 # frc-comercial (solo parte del workspace, cada componente tiene su propio repo)
 frc-comercial/
 
