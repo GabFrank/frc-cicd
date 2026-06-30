@@ -33,6 +33,7 @@ Incluye `dashboard/` (Next + jobs + SQLite) y `notifications/` (Evolution API + 
 - **`runbook-migracion-central-beta.md`** — Runbook para migrar central al canal beta
 - **`runbook-migracion-filial-linux-beta.md`** — Runbook para migrar filiales Linux al canal beta
 - **`runbook-migracion-filial-windows-beta.md`** — Runbook para migrar filiales Windows al canal beta
+- **`runbook-backfill-replica-bidireccional.md`** — Runbook para rellenar un gap de réplica lógica en el central sin que reboten los datos a la filial (origin trick)
 - **`scripts/`** — Scripts de auto-update y arranque para filiales
 
 ## Flujo de ramas
