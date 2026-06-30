@@ -16,11 +16,15 @@ TOKEN_FILE="${BASE_DIR}/.github-token"
 FILIAL_ID_FILE="${BASE_DIR}/.filial-id"
 LOG_FILE="${BASE_DIR}/logs/update.log"
 JAR_NAME="frc-filial-server.jar"
-SERVICE_NAME="frc-filial.service"
+# El unit systemd se llama frc.service en toda la flota (farmacia + bodega), y el
+# NOPASSWD sudoers está configurado para frc.service. Usar frc-filial.service hace
+# que `sudo systemctl restart` no matchee ninguna regla NOPASSWD -> pide password ->
+# falla bajo cron y el servicio nunca se reinicia (drift: marker avanza, proceso no).
+SERVICE_NAME="frc.service"
 REPO="GabFrank/franco-system-backend-filial"
 HEALTH_PORT=$(grep -s SERVER_PORT "${BASE_DIR}/.env" | cut -d= -f2 || echo "8080")
 HEALTH_URL="http://localhost:${HEALTH_PORT}/actuator/health"
-HEALTH_TIMEOUT=120
+HEALTH_TIMEOUT=240
 HEALTH_INTERVAL=5
 
 # --- Logging ---
@@ -142,7 +146,8 @@ PREVIOUS_VERSION="${CURRENT_VERSION}"
 
 echo "Updating symlink: current -> ${RELEASE_DIR}"
 ln -sfn "${RELEASE_DIR}" "${CURRENT_LINK}"
-echo "${LATEST_VERSION}" > "${VERSION_FILE}"
+# .current-version is written only after the running jar is verified below, so a
+# failed restart can never leave the marker ahead of the live process.
 
 echo "Restarting ${SERVICE_NAME}..."
 sudo systemctl restart "${SERVICE_NAME}"
@@ -157,7 +162,15 @@ while [[ ${ELAPSED} -lt ${HEALTH_TIMEOUT} ]]; do
   HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${HEALTH_URL}" 2>/dev/null || echo "000")
 
   if [[ "${HTTP_STATUS}" == "200" || "${HTTP_STATUS}" == "503" ]]; then
-    echo "Health check PASSED (HTTP ${HTTP_STATUS}) at ${ELAPSED}s"
+    # Verify the RUNNING jar is actually the new version; /actuator/health alone
+    # gives a false positive when a stale process is still answering on the port.
+    RUNNING_VERSION=$(curl -s "http://localhost:${HEALTH_PORT}/api/version" 2>/dev/null | jq -r '.version // empty')
+    if [[ "${RUNNING_VERSION}" != "${LATEST_VERSION}" ]]; then
+      echo "Health ${HTTP_STATUS} but running version '${RUNNING_VERSION}' != ${LATEST_VERSION}; still booting, retrying..."
+      continue
+    fi
+    echo "${LATEST_VERSION}" > "${VERSION_FILE}"
+    echo "Health check PASSED (HTTP ${HTTP_STATUS}, version ${RUNNING_VERSION}) at ${ELAPSED}s"
     echo "Successfully updated to ${LATEST_VERSION}"
     notify_github "${LATEST_VERSION}" "success" "Health check passed (HTTP ${HTTP_STATUS})"
     exit 0
