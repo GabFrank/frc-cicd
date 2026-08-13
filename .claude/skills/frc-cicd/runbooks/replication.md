@@ -206,3 +206,53 @@ Reparación de la réplica bidireccional de bodega + farmacia (`movimiento_stock
 - [ ] En `.env` de central: `REPLICATION_SYNC_ENABLED=true`, `REPLICATION_REFRESH_ENABLED=true`.
 - [ ] En `.env` de cada filial: idem.
 - [ ] Restart de servicios y observación de logs por 1h sin errores.
+
+## Chequeo rápido de salud post-deploy (validado 2026-08-13)
+
+Después de aplicar migraciones en central o filial, la pregunta es una sola: **¿algún
+apply worker quedó en crash-loop?** El síntoma clásico es
+`missing replicated columns` — central emite DML con columnas que la filial no tiene,
+porque **la replicación lógica no propaga DDL**.
+
+No hace falta entrar a cada filial. **Se diagnostica entero desde central**, mirando los
+slots: un worker sano mantiene su slot `active` y el WAL retenido en decenas de bytes;
+uno en crash-loop deja el slot **inactivo y el contador creciendo**.
+
+```bash
+# dos muestras separadas ~45s: lo que importa es si 'bytes' crece
+psql -h localhost -p 5551 -d farmacia -qAtX -F'|' -c "
+  SELECT slot_name, active,
+         pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn) AS bytes
+  FROM pg_replication_slots
+  WHERE slot_name NOT LIKE 'bodega%'
+  ORDER BY slot_name"
+```
+
+Lectura del resultado:
+
+| Patrón | Significa |
+|---|---|
+| `active=t`, decenas de bytes, estable entre muestras | sano (es el heartbeat normal) |
+| `active=f`, bytes **creciendo** | worker caído **y** el publisher sigue generando → investigar ya |
+| `active=f`, bytes **congelados** | suscriptor apagado sin tráfico nuevo. No empeora mientras siga abajo |
+
+Complemento (el otro sentido, filial→central):
+
+```bash
+psql ... -c "
+  SELECT s.subname, s.subenabled, (st.pid IS NOT NULL) AS worker_vivo,
+         st.last_msg_receipt_time::timestamp(0)
+  FROM pg_subscription s
+  LEFT JOIN pg_stat_subscription st ON st.subname = s.subname
+  WHERE s.subname NOT LIKE 'bodega%' ORDER BY s.subname"
+```
+
+`last_msg_receipt_time` de hace segundos = al día.
+
+> **Gotcha del filtro:** conectado a la DB `farmacia` también se ven las subs
+> `bodega_*` (deshabilitadas, sin worker). Sin el `NOT LIKE 'bodega%'` parece que
+> hubiera media docena de subs rotas.
+
+> **Gotcha de `max(version)` en Flyway:** `flyway_schema_history.version` es **texto**,
+> así que `max(version)` devuelve `'99.5'` en vez de `'197.5'`. Para saber hasta dónde
+> llegó una migración, ordenar por `installed_rank DESC`, no por `version`.

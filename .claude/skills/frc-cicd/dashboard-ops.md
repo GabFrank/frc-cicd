@@ -52,7 +52,9 @@ SQLite en **`/data/dash.db`** dentro del contenedor, montado desde el volumen **
 
 **Tablas principales** (ver `dashboard/lib/schema.ts` para schema completo):
 
-- `servers` — inventario de servers monitoreados (central + 25 filiales).
+- `monitored_servers` — inventario de servers monitoreados. Guarda `ip`, `pg_port`,
+  `pg_database`, `pg_user`, `pg_password`, `channel`, `sucursal_id`, `active`.
+  (Versiones viejas de esta doc decían `servers` — **esa tabla no existe**, corregido 2026-08-13.)
 - `alerts` — alertas generadas. Columna `kind` = tipo de evento.
 - `alert_rule_config` — cicles de pending/resolving por kind (editable via UI admin).
 - `notification_rules` — filtros por kind/severity/server. CSV de kinds en `alert_kinds_csv`.
@@ -61,6 +63,31 @@ SQLite en **`/data/dash.db`** dentro del contenedor, montado desde el volumen **
 - `notification_state` — deduplicación por fingerprint+target.
 - `deployments`, `releases` — sync desde GitHub.
 - `expected_replication` — expected peer_server_id por server.
+- `instance_runtime`, `replication_check_results` — ⚠️ **sin datos frescos** (ver abajo).
+
+### ⚠️ No confiar en el dashboard para versión ni replicación (verificado 2026-08-13)
+
+Dos tablas quedaron congeladas y **no reflejan el estado real**:
+
+| Tabla | Último dato | Consecuencia |
+|---|---|---|
+| `instance_runtime` | jul-2026, columnas `version`/`build`/`git_commit` **vacías** | no sirve para saber qué versión corre un host |
+| `replication_check_results` | 2026-07-09 | no sirve para saber si la replicación está sana |
+
+**Fuentes confiables en su lugar:**
+
+- **Versión de una filial** → los *deployments* de GitHub, que la propia filial reporta
+  al terminar su `check-update`, con su health check:
+  ```bash
+  gh api repos/GabFrank/franco-system-backend-filial/deployments \
+    --jq '.[] | "\(.created_at) \(.environment) \(.ref)"'
+  # y el estado:
+  gh api repos/.../deployments/<id>/statuses --jq '.[0].state'   # success + "Health check passed (HTTP 200)"
+  ```
+  Cubre incluso filiales que no están en `monitored_servers` (p. ej. filial 6 farmacia).
+- **Salud de la replicación** → `pg_replication_slots` en central, directo por psql
+  (ver [runbooks/replication.md](../runbooks/replication.md)).
+- **Versión instalada en disco** → `cat /opt/frc-filial/.current-version` por SSH.
 
 ## Hack para correr SQL ad-hoc
 
