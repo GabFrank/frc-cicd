@@ -27,3 +27,6 @@ frc-comercial/
 
 # TypeScript incremental build cache
 dashboard/tsconfig.tsbuildinfo
+
+# Claude Code runtime
+.claude/scheduled_tasks.lock

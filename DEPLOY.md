@@ -1,15 +1,46 @@
 # Deploy del Dashboard
 
-Pipeline simple para **on-prem con acceso ZeroTier**:
+Pipeline simple: la imagen se buildea sola, el host pullea cuando querés.
 
 ```
 push a master ──▶ GH Actions build ──▶ ghcr.io/gabfrank/frc-dashboard:latest
                                               │
                                               ▼
-                                 host on-prem: docker compose pull && up -d
+                                 host: docker compose pull && up -d
 ```
 
-No hay SSH deploy automático ni nginx público. La máquina on-prem pullea cuando vos querés.
+No hay SSH deploy automático. El host pullea a demanda.
+
+> **Migración en curso (2026-07-09):** el dashboard se está moviendo del host **on-prem `172.25.0.172`** (ZeroTier, deploy original) a la **VM Hetzner `178.105.107.171`**, accesible por `https://frc-cicd-dash.francoarevalos.com` detrás de nginx+TLS. La VM se conecta a la red on-prem vía **headscale** (no ZeroTier), en el marco de migrar todo frc-comercial a headscale. Plan por fases: [`plan-migracion-dashboard-hetzner.md`](plan-migracion-dashboard-hetzner.md). Las dos secciones de deploy conviven abajo.
+
+---
+
+## Deploy en VM Hetzner (headscale + nginx público) — destino
+
+Diferencias clave contra el on-prem:
+- **Ubicación:** `/home/deploy/frc-cicd` (user `deploy`, en grupo docker — no requiere `sudo` para docker).
+- **Puerto dashboard:** `127.0.0.1:3001:3000` (el `3000` lo ocupa farmacia Next.js). Nunca publicar en la IP pública.
+- **Exposición:** nginx del host (`/etc/nginx/conf.d/frc-cicd-dash.conf`) → `proxy_pass http://127.0.0.1:3001`, cert por `certbot --nginx -d frc-cicd-dash.francoarevalos.com`.
+- **Reachability a `172.25.*`:** vía tailscale/headscale (`tailscale up --login-server https://hs.farmaciafrancopy.com --accept-routes`) + subnet-route `172.25.0.0/16` aprobada en headscale. Con eso `CENTRAL_BASE_URL=http://172.25.1.200` sigue funcionando sin cambios en el registro.
+- **`.env`:** `DASHBOARD_PUBLIC_URL=https://frc-cicd-dash.francoarevalos.com`, `SESSION_COOKIE_SECURE=true`.
+- **Swap:** la VM no tiene; agregar swapfile 2–4 GB antes de arrancar el stack.
+
+Arranque (una vez copiados compose + `.env` + datos — ver plan Fase 3):
+```bash
+cd /home/deploy/frc-cicd
+docker compose up -d          # sin sudo (deploy ∈ docker)
+docker compose ps
+curl -fsS http://127.0.0.1:3001/api/data/overview | jq '.summary'
+```
+
+Actualizar:
+```bash
+cd /home/deploy/frc-cicd && docker compose pull dashboard jobs migrate && docker compose up -d
+```
+
+---
+
+## Deploy on-prem `172.25.0.172` (ZeroTier) — origen (legacy, sigue vivo hasta el cutover)
 
 ## Primera vez (host on-prem)
 

@@ -1,10 +1,14 @@
 # Estado del Dashboard FRC — observación por equipo dev
 
-**Deploy:** `172.25.0.172` (Fedora 41 + Docker CE + ZeroTier) — 2026-04-21
+**Deploy actual:** `172.25.0.172` (`mauro`, Docker CE + ZeroTier) — 2026-04-21
 **Fuente:** `ghcr.io/gabfrank/frc-dashboard:latest` (build + push automático por GH Actions en cada push a `master`)
 **Ciclo de actualización:** manual hoy (`docker compose pull && up -d` en el host). Cron `*/10` recomendado post-observación.
 
+> **🚧 Migración en curso (2026-07-09):** el dashboard se mueve a la **VM Hetzner `178.105.107.171`**, accesible por **`https://frc-cicd-dash.francoarevalos.com`** (nginx+TLS), conectada a la red on-prem vía **headscale**. Despliegue escalonado: el on-prem sigue monitoreando hasta que headscale llegue a todas las filiales + central. Plan: [`plan-migracion-dashboard-hetzner.md`](plan-migracion-dashboard-hetzner.md). Inventario: [`scans/hetzner-migracion-2026-07-09/REPORTE.md`](scans/hetzner-migracion-2026-07-09/REPORTE.md).
+
 ## Acceso
+
+**Hoy (on-prem, ZeroTier):**
 
 | Servicio | URL interna (ZeroTier) | Login |
 |---|---|---|
@@ -14,6 +18,8 @@
 | n8n (workflows opcionales) | `http://172.25.0.172:5678` | `admin` / _password en .env_ |
 
 **Requisito**: ZeroTier con la red FRC activa en tu máquina.
+
+**Post-migración (VM Hetzner):** dashboard en `https://frc-cicd-dash.francoarevalos.com` (público, TLS + auth, sin requerir VPN). Evolution/n8n quedan en loopback de la VM (`127.0.0.1:8090` / `:5678`, acceso por SSH tunnel).
 
 ## Qué monitorea hoy
 
