@@ -30,6 +30,20 @@ commit y nunca push directo.
 
 | 2026-08-14 | **D parcial**: 3 proyectos de Pages creados con sus 4 puertas, y un marcador de posición desplegado en cada uno para validar la cadena sin tocar el repo | Cloudflare Pages |
 
+| 2026-08-14 | **B + C + E hechas** en la rama `ci/pipeline-y-despliegue`, desde un **worktree aparte** para no chocar con la otra sesión. Build AOT en verde y 433 tests. Sin pushear | worktree del repo PWA |
+
+> ⚠️ **`develop` todavía no tiene el sello de versión ni el mecanismo de
+> actualización.** `scripts/sello-version.mjs`, `core/actualizacion/` y el
+> `appData` de `ngsw-config.json` viven en las PR abiertas. Los archivos de CI
+> no dependen de eso y compilan igual, pero **hasta que se mergeen las PR un
+> release no puede nombrarse a sí mismo en la app**: el `package.json` parcheado
+> no llega a ninguna pantalla. Mergear primero.
+
+> ⚠️ **No se agregó `prettier --check` al CI.** Hay **214 archivos** del repo que
+> no pasan el formateo; el paso tumbaría toda PR por código ajeno al cambio. El
+> orden correcto es un `chore` que corra `prettier --write .` sobre todo el repo
+> y recién después sumar el paso.
+
 **Validación A1, desde fuera de la red** (2026-08-14):
 
 | Chequeo | farmacia-api | bodega-api |
