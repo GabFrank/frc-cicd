@@ -113,6 +113,13 @@ Poner HTTPS delante de farmacia/bodega es **agregar `server` blocks y correr `ce
 |---|---|---|---|---|
 | `frc-alpha.service` | **central alpha** | 8083 | `/opt/frc-backend-central/alpha/current/frc-central-server.jar` | `4.7.0-alpha.39` (13-ago) |
 | `frc-filial.service` | **filial alpha** | 8080 | `/opt/frc-filial/current/frc-filial-server.jar` | `5.0.0-alpha.7`, `.channel=alpha` |
+| `cloudflared.service` | **túnel a Cloudflare** | — | token en `/etc/cloudflared/token` (`0600 root`) | `2026.8.2`, instalado 2026-08-14 |
+
+**El túnel es cómo se llega a alpha desde fuera.** Túnel `frc-alpha-mauro`,
+gestionado desde Cloudflare (el ingress vive en la nube, no en un `config.yml`
+local), publicando `alpha-api.frcsuite.com` → `http://127.0.0.1:8083`. Es una
+conexión **saliente**: mauro no tiene ningún puerto abierto hacia internet.
+Para cambiar el ingress se edita en el panel o por API, no en el host.
 
 Ambos corren como user `deploy`, con el mismo layout `releases/` + symlink `current` + `.current-version` que las filiales. El central alpha lee `/opt/frc-backend-central/alpha/.env` y su unit declara `After=postgresql-beta.service`.
 
