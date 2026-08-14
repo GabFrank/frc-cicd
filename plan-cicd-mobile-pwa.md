@@ -32,6 +32,8 @@ commit y nunca push directo.
 
 | 2026-08-14 | **B + C + E hechas** en la rama `ci/pipeline-y-despliegue`, desde un **worktree aparte** para no chocar con la otra sesión. Build AOT en verde y 433 tests. Sin pushear | worktree del repo PWA |
 
+| 2026-08-14 | PR **#4** abierta contra `develop`; secrets `CLOUDFLARE_API_TOKEN` y `CLOUDFLARE_ACCOUNT_ID` cargados; environment `production` creado con revisor obligatorio y **sin bypass de admin** | GitHub |
+
 > ⚠️ **`develop` todavía no tiene el sello de versión ni el mecanismo de
 > actualización.** `scripts/sello-version.mjs`, `core/actualizacion/` y el
 > `appData` de `ngsw-config.json` viven en las PR abiertas. Los archivos de CI
@@ -529,17 +531,20 @@ mismo modo que ya existen los `desktop_channel`.
 ```
 ✅ Fase A1 · TLS de farmacia y bodega                    hecho 2026-08-14
 ✅ Fase A2 · túnel + DNS de alpha                        hecho 2026-08-14
+✅ Fase D  · 3 proyectos Pages + 4 puertas + certs       hecho 2026-08-14
+✅ Fase B  · ci.yml                                      PR #4
+✅ Fase C  · .releaserc.json + release.yml               PR #4
+✅ Fase E  · mapa hostname→API, _redirects, _headers     PR #4
+✅          secrets + environment production con revisor hecho 2026-08-14
 ──────────────────────────────────────────────────────────────────────
-1 · Mergear PR #1 → #2 → #3
-2 · Fase F  · proteger ramas, crear release/beta
-3 · Fase B  · ci.yml
-4 · Fase C  · .releaserc.json + release.yml
-5 · Fase E  · mapa hostname→API, _redirects, _headers, .nvmrc
-6 · Fase D  · 3 proyectos Pages + dominios + Access sobre alpha.app
-7 ·           deploy alpha → validar en un Android y en un iPhone
-8 ·           deploy beta → correr el plan de testeo manual
-9 ·           deploy prod con aprobación
-10 · Fase G · versión por canal en el dashboard
+1 · Mergear PR #1 → #2 → #3, y después la #4
+2 · Fase F  · proteger master, develop y release/beta; crear release/beta
+3 ·           primer release alpha → validar en un Android y en un iPhone
+4 ·           Access sobre alpha.app (manual, por el panel)
+5 ·           chore: prettier --write . y sumar el paso al CI
+6 ·           deploy beta → correr el plan de testeo manual
+7 ·           deploy prod con aprobación
+8 · Fase G · versión por canal en el dashboard
 ```
 
 **La infraestructura ya no bloquea nada.** Lo que queda es trabajo de repo, y
