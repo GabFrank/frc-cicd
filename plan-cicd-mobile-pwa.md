@@ -13,6 +13,29 @@ commit y nunca push directo.
 
 ---
 
+## 0 · Estado de ejecución
+
+| Fecha | Qué se hizo | Dónde |
+|---|---|---|
+| 2026-08-14 | Inventario corregido: alpha vive en mauro, no en la VM DO | `hosts.md`, `gotchas.md`, `CLAUDE.md` raíz |
+| 2026-08-14 | `frc-alpha.service` zombi **apagado** en la VM DO; 8083 liberado | `159.203.86.103` |
+| 2026-08-14 | Dashboard: `central-alpha` → `100.64.0.2`, `central-beta-piloto` retirada (`active=0`) | `dashboard/lib/config.ts` + `dash.db` |
+| 2026-08-14 | **A1 parcial**: `/etc/nginx/conf.d/frc-central-api.conf` con los bloques de `farmacia-api` y `bodega-api`, `nginx -t` ok, reload aplicado, proxy verificado (401 idéntico al backend directo) | VM DO |
+| 2026-08-14 | **A1 paso 4**: `SERVER_FORWARD_HEADERS_STRATEGY=NATIVE` en el `.env` de farmacia y bodega, ambas reiniciadas y verificadas. Backups en `.env.bak-20260814` | VM DO |
+
+**Lo que falta de A1:** los registros A en `frcsuite.com` y `certbot --nginx`.
+Necesita una credencial de Cloudflare — la del `.env` de `frc-cicd` es R2-scoped
+y no ve zonas.
+
+Dos cosas aprendidas reiniciando:
+
+- **El central tarda ~2 minutos en levantar.** Farmacia 14:42:45 → 14:44:36.
+- Cada reinicio deja un puñado de `ERROR … Broken pipe` en el journal que son
+  **del proceso viejo muriendo**, no del nuevo: son los desktops que tenían
+  suscripciones GraphQL abiertas. Se distinguen por el PID.
+
+---
+
 ## 1 · Punto de partida
 
 ### Lo que el repo ya tiene resuelto
