@@ -28,6 +28,8 @@ commit y nunca push directo.
 | 2026-08-14 | Limpieza: `server` blocks de `bodegafranco.com` fuera de `nginx.conf` y cert vencido borrado. Backup `nginx.conf.bak-20260814` | VM DO |
 | 2026-08-14 | **A2 COMPLETA**: `cloudflared 2026.8.2` instalado en mauro, túnel `frc-alpha-mauro`, CNAME `alpha-api` proxeado, 4 conexiones registradas. mauro no abrió ni un puerto | mauro |
 
+| 2026-08-14 | **D parcial**: 3 proyectos de Pages creados con sus 4 puertas, y un marcador de posición desplegado en cada uno para validar la cadena sin tocar el repo | Cloudflare Pages |
+
 **Validación A1, desde fuera de la red** (2026-08-14):
 
 | Chequeo | farmacia-api | bodega-api |
@@ -350,8 +352,28 @@ hostname, así que el tercer nivel no es problema):
 | `frc-pwa-beta` | `beta.app.frcsuite.com` |
 | `frc-pwa-prod` | `farmacia.app.frcsuite.com`, `bodega.app.frcsuite.com` |
 
+**Estado 2026-08-14:** los tres proyectos existen (`frc-pwa-alpha`,
+`frc-pwa-beta`, `frc-pwa-prod`), las cuatro puertas están asociadas y cada
+proyecto tiene un marcador de posición desplegado — se subió con `wrangler pages
+deploy` desde un directorio con un solo `index.html`, **sin compilar el repo**,
+porque `npm run build` mata el `ng serve` que pueda estar corriendo.
+
+Dos cosas que no se deducen del panel:
+
+- **Pages no crea el CNAME solo.** Asociar el dominio personalizado por API lo
+  deja en `initializing` hasta que exista el registro; hay que crearlo a mano
+  apuntando a `<proyecto>.pages.dev`, proxeado.
+- **El certificado de un hostname de tres niveles lo emite Pages**, no el
+  Universal de la zona: aparece como `pending` unos minutos y lo firma Google
+  Trust Services. Es lo que hace viable el esquema `<empresa>.app.frcsuite.com`
+  sin pagar ACM.
+
 **Paso obligatorio de esta fase:** crear la aplicación de **Cloudflare Access
-sobre `alpha.app.frcsuite.com`** con lista de mails. Es la protección de alpha
+sobre `alpha.app.frcsuite.com`** con lista de mails. ⚠️ El token actual **no
+alcanza**: leer o crear la organización Zero Trust necesita el permiso
+*Access: Organizations, Identity Providers, and Groups*, que no está en el token
+de hoy. Si la organización nunca se creó, el primer paso es hacerlo desde el
+panel. Es la protección de alpha
 que quedó pendiente de A2 — ahí el flujo de login por navegador funciona natural,
 sin tocar Apollo.
 
