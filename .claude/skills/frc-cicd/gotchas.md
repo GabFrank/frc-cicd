@@ -88,6 +88,20 @@ Path de log `/opt/frc-filial/logs/` evita necesitar sudo para crear `/var/log/fr
 
 **Fix:** usar el archivo `/opt/frc-filial/.filial-id` (e.g. `farmacia-filial-1-linux`) o la IP para identificar univocamente.
 
+### Hay (había) dos `frc-alpha.service` y el inventario apuntaba al equivocado (2026-08-14)
+**Qué pasa:** todo lo que asumía «central alpha = `159.203.86.103:8083`» apuntaba a una instancia sin usuarios, congelada en `4.1.0-alpha.67` desde el 23-jul-2026. El alpha real —el que recibe los deploys y corría `4.7.0-alpha.39`— vive en **mauro (`172.25.0.172:8083`)**, junto con la filial alpha.
+
+**Por qué:** el central alpha se movió a mauro y nadie apagó el servicio viejo en la VM DigitalOcean. Los dos units se llaman igual, escuchan el mismo puerto y responden; solo se distinguen por `.current-version`.
+
+**Cómo se detecta:**
+```bash
+cat /opt/frc-backend-central/alpha/.current-version   # en cada host
+systemctl show frc-alpha.service -p ActiveEnterTimestamp
+```
+Si la fecha es de semanas atrás y el journal solo tiene ruido de escaneo de internet (`Invalid character found in method name [0x16 0x03 0x01…]` = ClientHello TLS contra puerto HTTP plano), es el zombi.
+
+**Fix:** el zombi de la VM DO se apagó el 2026-08-14 (`systemctl stop`; ya estaba `disabled`, o sea llevaba 3 semanas vivo solo porque nadie reinició la VM). El 8083 de `159.203.86.103` quedó libre. **Antes de creerle a cualquier doc sobre alpha, verificar contra `.current-version` del host.** Ojo también con `frc-cicd/dashboard/lib/config.ts`: tenía `central-alpha` apuntando al zombi, o sea el dashboard vigilaba el host equivocado.
+
 ## Repos / CI/CD
 
 ### Deploy workflow resuelve versión incorrecta (alpha/beta)

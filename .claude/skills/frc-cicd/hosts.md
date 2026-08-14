@@ -15,20 +15,40 @@ Credenciales SSH en el `.env` del repo frc-cicd.
 | ZeroTier `zteb4nkfeh` | `192.168.100.209` | **segunda red ZT** — scope a relevar antes de apagar ZeroTier |
 | Tailnet | `100.64.0.3` = `central.hs.farmacia` | destino de la migración |
 
-Hostea 4 instancias del backend central en 4 puertos distintos, con 2 clusters PostgreSQL en paralelo:
+Hostea las instancias productivas del backend central, con 2 clusters PostgreSQL en paralelo (**verificado 2026-08-14**):
 
-| Puerto | Instancia | Canal pipeline | Cluster PG | DB | Notas |
-|---|---|---|---|---|---|
-| 8081 | bodega | stable | **5552** | bodega | productivo — verificado 2026-07-07 (67 conexiones activas en 5552; en 5551 queda una DB `bodega` huérfana con 0 conexiones) |
-| 8082 | farmacia | producción (migrando a beta) | 5551 | farmacia | productivo — migración a canal beta en curso |
-| 8083 | alpha | alpha | 5553 | alpha | dev (verificado 2026-07-07: DB `alpha` vive en cluster 5553) |
-| 8084 | beta | beta | ? | ? | revisar — en 5552 ya no existe DB `beta` (solo `bodega`); confirmar si la instancia beta sigue activa y contra qué DB |
+| Puerto | Instancia | Canal pipeline | Cluster PG | DB | Versión 2026-08-14 | Notas |
+|---|---|---|---|---|---|---|
+| 8081 | bodega | stable | **5552** | bodega | `4.8.0` | productivo — verificado 2026-07-07 (67 conexiones activas en 5552; en 5551 queda una DB `bodega` huérfana con 0 conexiones) |
+| 8082 | farmacia | beta | 5551 | farmacia | `4.7.0-beta.2` | productivo — ya corre canal beta |
+| 8083 | ~~alpha~~ | — | 5553 | alpha | `4.1.0-alpha.67` | ⚰️ **zombi apagado el 2026-08-14** (`stop`, ya estaba `disabled`). El alpha real vive en mauro. Ver el gotcha «Hay dos `frc-alpha.service`». La DB `alpha` del cluster 5553 quedó intacta |
+| 8084 | ~~beta piloto~~ | — | — | — | — | ⚰️ **no escucha** (verificado 2026-08-14). Instancia muerta |
+
+> ⚠️ **El central alpha NO está acá, está en mauro (`172.25.0.172:8083`).** Ver la sección de mauro. La VM DO tenía un `frc-alpha.service` propio corriendo desde el 23-jul-2026 con una versión vieja y sin usuarios — es el zombi de la tabla.
 
 **Users SSH:**
 - `deploy` → user oficial para workflows CI (sudoers NOPASSWD para `systemctl restart frc-*.service`). El workflow `Deploy` del repo central hace `ssh deploy@` vía SSH key.
 - `franco` → user humano para comandos manuales. También tiene sudoers pero puede variar entre hosts.
 
-**Servicios systemd** en central: `frc-bodega.service`, `frc-farmacia.service`, `frc-alpha.service`, `frc-beta.service`.
+**Servicios systemd** en central: `frc-bodega.service`, `frc-farmacia.service`, `frc-ecommerce.service` (Next.js del e-commerce).
+
+**nginx + certbot ya están instalados y en uso** (verificado 2026-08-14) — dato que faltaba en este inventario y que abarata cualquier plan de TLS:
+
+| Config | `server_name` | Cert |
+|---|---|---|
+| `/etc/nginx/conf.d/frc-ecommerce.conf` | `frc-ecommerce.com`, `*.frc-ecommerce.com`, `app.frc-ecommerce.com` | Let's Encrypt (`/etc/letsencrypt/live/…`) |
+| `/etc/nginx/conf.d/donfranco.conf` | `donfrancorestaurante.com`, `www.` | Let's Encrypt |
+
+Poner HTTPS delante de farmacia/bodega es **agregar `server` blocks y correr `certbot --nginx`**, no montar infraestructura nueva.
+
+**Zonas DNS del ecosistema** (verificado 2026-08-14 por `dig NS`):
+
+| Zona | DNS | Uso |
+|---|---|---|
+| `frcsuite.com` | Cloudflare | **zona nueva del SaaS** (registrada 2026-08-14). Destino de los subdominios de la PWA y de las APIs HTTPS del central |
+| `frc-ecommerce.com` | Cloudflare | e-commerce + `efact.frc-ecommerce.com` |
+| `francoarevalos.com` | Cloudflare | infra interna (`frc-cicd-dash`, `wa`) |
+| `farmaciafrancopy.com` | **Hostinger** (`dns-parking.com`) | marca farmacia + `hs.farmaciafrancopy.com` (control server headscale). **No está en Cloudflare** — no sirve para Pages ni Tunnel sin migrar los NS, y migrarlos toca la VPN |
 
 **Flyway:** cada instancia usa su propia DB del cluster correspondiente. Migraciones son aditivas — nunca `DROP`/`RENAME` sin estrategia de 2 versiones. Ver [CLAUDE.md de central](/Users/gabfranck/workspace/frc-sistemas-informaticos/frc-comercial/central/CLAUDE.md).
 
@@ -78,9 +98,30 @@ Hostea 4 instancias del backend central en 4 puertos distintos, con 2 clusters P
 
 **Cluster PG por filial:** por default `5551`, DB `general`. Hay un ejecutable legacy en algunas filiales (ver filial 2) con PG 16 en Docker.
 
-## Dashboard + Evolution API + n8n (on-prem)
+## mauro — **el entorno alpha completo** + dashboard/Evolution/n8n (on-prem)
 
-**`172.25.0.172`** (hostname `mauro`) — Fedora con Docker CE. Stack completo en `/opt/frc-cicd/docker-compose.yml`, project name `frc-cicd`, network `frc-net`. **8 servicios** (verificado 2026-07-09):
+**`172.25.0.172`** (hostname `mauro`, tailnet `100.64.0.2` = `frc-mauro-subnet`).
+
+### El canal alpha entero vive acá (verificado 2026-08-14)
+
+**No en la VM DigitalOcean.** Ese es el error más caro de este inventario: los planes que asumen «alpha = `159.203.86.103:8083`» apuntan a un zombi.
+
+| Servicio systemd | Rol | Puerto | Path | Versión 2026-08-14 |
+|---|---|---|---|---|
+| `frc-alpha.service` | **central alpha** | 8083 | `/opt/frc-backend-central/alpha/current/frc-central-server.jar` | `4.7.0-alpha.39` (13-ago) |
+| `frc-filial.service` | **filial alpha** | 8080 | `/opt/frc-filial/current/frc-filial-server.jar` | `5.0.0-alpha.7`, `.channel=alpha` |
+
+Ambos corren como user `deploy`, con el mismo layout `releases/` + symlink `current` + `.current-version` que las filiales. El central alpha lee `/opt/frc-backend-central/alpha/.env` y su unit declara `After=postgresql-beta.service`.
+
+**Tres clusters PostgreSQL locales:** `5551`, `5552`, `5553` (escuchan en `0.0.0.0`).
+
+> ⚠️ **mauro no tiene IP pública.** Su único acceso desde fuera de la LAN/ZeroTier es el tailnet (`100.64.0.2`). Cualquier cliente **público** que necesite hablarle a alpha —una PWA servida por HTTPS, por ejemplo— necesita un túnel (Cloudflare Tunnel) o que el dispositivo esté enrolado en headscale. No alcanza con abrir un puerto: no hay dónde abrirlo.
+
+> ⚠️ **mauro es SPOF y está en retiro como bridge** (estuvo offline 2026-08-08→11). Que además hostee el canal alpha completo significa que se cae con él.
+
+### Dashboard + Evolution + n8n
+
+Fedora con Docker CE. Stack completo en `/opt/frc-cicd/docker-compose.yml`, project name `frc-cicd`, network `frc-net`. **8 servicios** (verificado 2026-07-09):
 
 | Servicio | Container | Puerto host | Imagen | Volumen |
 |---|---|---|---|---|
@@ -97,7 +138,7 @@ Puertos host publicados: **3000** (dashboard, 0.0.0.0 en ZeroTier), **8090** (ev
 
 ZeroTier: red `b6079f73c6af6767` (nombre **"bodega"**, PRIVATE), IP `172.25.0.172/16`.
 
-**Este mismo host** también actúa como **filial piloto Linux** (`FILIAL_TEST_LINUX_HOST`). Roles múltiples conviven.
+**Este mismo host** también actúa como **filial piloto Linux** (`FILIAL_TEST_LINUX_HOST`) **y como central alpha** (ver arriba). Roles múltiples conviven.
 
 **User:** `franco` en grupos `wheel` y `docker`. Gotcha: `docker` sin `DOCKER_HOST` override falla — ver [dashboard-ops.md](dashboard-ops.md).
 
