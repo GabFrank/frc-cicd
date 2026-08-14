@@ -22,10 +22,24 @@ commit y nunca push directo.
 | 2026-08-14 | Dashboard: `central-alpha` → `100.64.0.2`, `central-beta-piloto` retirada (`active=0`) | `dashboard/lib/config.ts` + `dash.db` |
 | 2026-08-14 | **A1 parcial**: `/etc/nginx/conf.d/frc-central-api.conf` con los bloques de `farmacia-api` y `bodega-api`, `nginx -t` ok, reload aplicado, proxy verificado (401 idéntico al backend directo) | VM DO |
 | 2026-08-14 | **A1 paso 4**: `SERVER_FORWARD_HEADERS_STRATEGY=NATIVE` en el `.env` de farmacia y bodega, ambas reiniciadas y verificadas. Backups en `.env.bak-20260814` | VM DO |
+| 2026-08-14 | Registros A `farmacia-api` y `bodega-api` → `159.203.86.103`, **sin proxear**, TTL 300 | Cloudflare, zona `frcsuite.com` |
+| 2026-08-14 | **A1 COMPLETA**: cert `frcsuite-central` emitido (2 SAN, vence 2026-11-12), redirect 80→443, renovación automática programada | VM DO |
 
-**Lo que falta de A1:** los registros A en `frcsuite.com` y `certbot --nginx`.
-Necesita una credencial de Cloudflare — la del `.env` de `frc-cicd` es R2-scoped
-y no ve zonas.
+**Validación A1, desde fuera de la red** (2026-08-14):
+
+| Chequeo | farmacia-api | bodega-api |
+|---|---|---|
+| `POST /graphql` | 401 (auth requerida) | 401 |
+| Redirect 80 → 443 | 301 | 301 |
+| Cadena de certificados | válida | válida |
+| **Upgrade WebSocket `/subscriptions`** | **101** | **101** |
+| `POST /login` | 401 con credenciales falsas | — |
+
+El 101 es el chequeo que más suele fallar y por eso está acá: con la nube gris
+no hay proxy de Cloudflare cortando conexiones ociosas a los ~100 s, y nginx
+tiene `proxy_read_timeout 3600s`.
+
+**Mixed content: resuelto para beta y prod.** Falta alpha (A2).
 
 Dos cosas aprendidas reiniciando:
 

@@ -38,6 +38,9 @@ Hostea las instancias productivas del backend central, con 2 clusters PostgreSQL
 |---|---|---|
 | `/etc/nginx/conf.d/frc-ecommerce.conf` | `frc-ecommerce.com`, `*.frc-ecommerce.com`, `app.frc-ecommerce.com` | Let's Encrypt (`/etc/letsencrypt/live/…`) |
 | `/etc/nginx/conf.d/donfranco.conf` | `donfrancorestaurante.com`, `www.` | Let's Encrypt |
+| `/etc/nginx/conf.d/frc-central-api.conf` | `farmacia-api.frcsuite.com` → `:8082`, `bodega-api.frcsuite.com` → `:8081` | LE `frcsuite-central` (2 SAN, 2026-11-12). **Creado 2026-08-14** para que la PWA hable HTTPS con el central |
+
+> ⚠️ **Cert `bodegafranco.com` VENCIDO desde 2026-06-27** (visto 2026-08-14 en `certbot certificates`). Si el dominio sigue en uso hay que renovarlo o borrarlo de certbot; si no, cada corrida de renovación va a seguir fallando y ensuciando el log.
 
 Poner HTTPS delante de farmacia/bodega es **agregar `server` blocks y correr `certbot --nginx`**, no montar infraestructura nueva.
 
