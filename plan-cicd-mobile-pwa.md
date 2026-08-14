@@ -25,6 +25,9 @@ commit y nunca push directo.
 | 2026-08-14 | Registros A `farmacia-api` y `bodega-api` → `159.203.86.103`, **sin proxear**, TTL 300 | Cloudflare, zona `frcsuite.com` |
 | 2026-08-14 | **A1 COMPLETA**: cert `frcsuite-central` emitido (2 SAN, vence 2026-11-12), redirect 80→443, renovación automática programada | VM DO |
 
+| 2026-08-14 | Limpieza: `server` blocks de `bodegafranco.com` fuera de `nginx.conf` y cert vencido borrado. Backup `nginx.conf.bak-20260814` | VM DO |
+| 2026-08-14 | **A2 COMPLETA**: `cloudflared 2026.8.2` instalado en mauro, túnel `frc-alpha-mauro`, CNAME `alpha-api` proxeado, 4 conexiones registradas. mauro no abrió ni un puerto | mauro |
+
 **Validación A1, desde fuera de la red** (2026-08-14):
 
 | Chequeo | farmacia-api | bodega-api |
@@ -39,7 +42,12 @@ El 101 es el chequeo que más suele fallar y por eso está acá: con la nube gri
 no hay proxy de Cloudflare cortando conexiones ociosas a los ~100 s, y nginx
 tiene `proxy_read_timeout 3600s`.
 
-**Mixed content: resuelto para beta y prod.** Falta alpha (A2).
+**Validación A2** (2026-08-14): `alpha-api.frcsuite.com` responde 401 en
+`/graphql` y `/login`, **101 en el upgrade WebSocket**, con certificado Universal
+de Cloudflare.
+
+**Mixed content: resuelto en los tres canales.** Los dos bloqueantes de
+infraestructura están cerrados; lo que queda es repo y Pages.
 
 Dos cosas aprendidas reiniciando:
 
@@ -127,11 +135,33 @@ el e-commerce y efact, `francoarevalos.com` para infra interna, y
 `farmaciafrancopy.com` fuera de juego porque vive en Hostinger y su zona sirve
 el control server de la VPN.
 
-| Canal | PWA | API | Apunta a |
+**El esquema separa cliente, empresa y canal**, y contempla que el desktop
+también se sirve como web:
+
+```
+MOBILE (Pages)                     DESKTOP WEB (Pages, más adelante)
+  farmacia.app.frcsuite.com   →      farmacia.desk.frcsuite.com
+  bodega.app.frcsuite.com     →      bodega.desk.frcsuite.com
+  beta.app.frcsuite.com       →      beta.desk.frcsuite.com
+  alpha.app.frcsuite.com      →      alpha.desk.frcsuite.com
+
+APIs — planas, dos niveles a propósito
+  farmacia-api.frcsuite.com   → DO :8082      ✅ operativa
+  bodega-api.frcsuite.com     → DO :8081      ✅ operativa
+  alpha-api.frcsuite.com      → mauro :8083   ✅ operativa (túnel)
+```
+
+| Canal | Proyecto Pages | Puertas | API por defecto |
 |---|---|---|---|
-| alpha | `movil-alpha.frcsuite.com` | `alpha-api.frcsuite.com` | mauro `:8083` **vía Cloudflare Tunnel** |
-| beta | `movil-beta.frcsuite.com` | `farmacia-api.frcsuite.com` | DO `:8082` (farmacia, `4.7.0-beta.2`) |
-| prod | `movil.frcsuite.com` | `bodega-api.frcsuite.com` | DO `:8081` (bodega, `4.8.0`) |
+| alpha | `frc-pwa-alpha` | `alpha.app` | `alpha-api` |
+| beta | `frc-pwa-beta` | `beta.app` | `farmacia-api` |
+| prod | `frc-pwa-prod` | `farmacia.app` y `bodega.app` | según el hostname |
+
+> ⚠️ **Las APIs van a dos niveles a propósito.** El certificado Universal de
+> Cloudflare cubre `frcsuite.com` y `*.frcsuite.com`, **no** un tercer nivel:
+> `alpha.api.frcsuite.com` proxeado exigiría Advanced Certificate Manager
+> ($10/mes). Los dominios de Pages se salvan porque Cloudflare emite un
+> certificado propio por hostname, pero el del túnel **va proxeado sí o sí**.
 
 **Decidido:** el canal prod apunta a **bodega `:8081`** (canal stable del
 backend, y la marca de la app es «Bodega Franco»). Farmacia, que hoy corre canal
@@ -188,17 +218,29 @@ Es lo único que puede bloquear al resto, así que va primero o en paralelo con 
 
 ### A2 · Camino público para alpha
 
-mauro no tiene dónde abrir un puerto. **Decidido: Cloudflare Tunnel + Access.**
+**Hecha el 2026-08-14.** `cloudflared 2026.8.2` instalado desde el repo oficial
+en mauro (Fedora 42), túnel **`frc-alpha-mauro`** gestionado desde Cloudflare —
+la configuración de ingress vive en la nube, no en un `config.yml` local— y
+`alpha-api.frcsuite.com` como CNAME proxeado a `<tunnel-id>.cfargotunnel.com`.
 
-`cloudflared` en mauro —hoy no está instalado— publicando
-`alpha-api.frcsuite.com` → `http://127.0.0.1:8083`. Sin IP pública, sin puertos
-abiertos, con TLS. Encima, **Cloudflare Access** con lista de mails (gratis hasta
-50 usuarios) para que alpha no quede abierto a internet: es una instancia de
-prueba, pero con datos parecidos a los reales y el mismo login del ERP.
+El servicio queda `enabled` con 4 conexiones registradas, y el token en
+`/etc/cloudflared/token` con permisos `0600 root`. **mauro no abrió ni un puerto**:
+el túnel es una conexión saliente.
+
+**Access va sobre la PWA, no sobre la API.** Poner Access delante de un endpoint
+que consume una SPA por XHR es la desconfiguración clásica: Access autentica con
+una cookie en el dominio protegido, y la PWA (`alpha.app`) y la API (`alpha-api`)
+son orígenes distintos, así que Apollo no la mandaría —salvo configurar
+`credentials: 'include'` y el CORS de la aplicación Access— y cada request
+rebotaría al login con un error de CORS opaco en vez de un 401 legible.
+
+La aplicación de Access se crea sobre `alpha.app.frcsuite.com` **como parte de la
+fase D**, cuando ese hostname exista. Mientras tanto el central rechaza con 401
+todo lo que llegue sin `Authorization: Token`.
 
 **Por qué no el tailnet, que parecía la respuesta obvia:** headscale ya llega a
 mauro, así que la tentación es no publicar nada. El problema es que **la PWA
-exige HTTPS de los dos lados**: servida desde `https://movil-alpha.frcsuite.com`,
+exige HTTPS de los dos lados**: servida desde `https://alpha.app.frcsuite.com`,
 una request a `http://100.64.0.2:8083` la bloquea el navegador por mixed content
 antes de salir. Y **headscale no emite certificados para nodos** — `tailscale
 cert` / `tailscale serve` los provee el servidor de coordinación de Tailscale
@@ -299,7 +341,21 @@ npx wrangler pages deploy dist/mobile-pwa/browser \
 Secrets: `CLOUDFLARE_API_TOKEN` (scope *Cloudflare Pages: Edit*) y
 `CLOUDFLARE_ACCOUNT_ID`.
 
-- **alpha y beta**: se disparan solos al crearse el release.
+- **Dominios personalizados por proyecto** (Pages emite un certificado propio por
+hostname, así que el tercer nivel no es problema):
+
+| Proyecto | Puertas |
+|---|---|
+| `frc-pwa-alpha` | `alpha.app.frcsuite.com` |
+| `frc-pwa-beta` | `beta.app.frcsuite.com` |
+| `frc-pwa-prod` | `farmacia.app.frcsuite.com`, `bodega.app.frcsuite.com` |
+
+**Paso obligatorio de esta fase:** crear la aplicación de **Cloudflare Access
+sobre `alpha.app.frcsuite.com`** con lista de mails. Es la protección de alpha
+que quedó pendiente de A2 — ahí el flujo de login por navegador funciona natural,
+sin tocar Apollo.
+
+**alpha y beta**: se disparan solos al crearse el release.
 - **prod**: `workflow_dispatch` con GitHub Environment `production` y required
   reviewers, igual que el `Deploy` del central.
 
@@ -315,18 +371,38 @@ v1.2.1. Es raro de leer, no es un fallo.
 
 Ninguno es grande, y **ninguno funciona sin los otros**.
 
-### E1 · Tres configuraciones de build
+### E1 · El backend por defecto sale del hostname, no del build
 
-`angular.json` hoy tiene solo `production` y `development`, sin
-`fileReplacements` — por eso `environment.prod.ts` nunca se usa. Agregar
-`alpha`, `beta` y `production` con las mismas opciones que la actual
-`production` (budgets + `outputHashing` + `serviceWorker`) y un
-`fileReplacements` a `environment.alpha.ts` / `environment.beta.ts` /
-`environment.prod.ts`, cada uno con su `defaultServerUrl`.
+**Decidido: un solo build, varias puertas.** En vez de tres configuraciones de
+`angular.json` con `fileReplacements`, un mapa `hostname → API` en el código:
 
-> No hace falta tocar `ServerConfigService`: ya lee `environment.defaultServerUrl`
-> solo cuando no hay nada en `localStorage`, y el usuario puede cambiar de
-> servidor desde el login o desde Mi cuenta.
+```ts
+const API_POR_HOST: Record<string, string> = {
+  'farmacia.app.frcsuite.com': 'https://farmacia-api.frcsuite.com',
+  'bodega.app.frcsuite.com':   'https://bodega-api.frcsuite.com',
+  'beta.app.frcsuite.com':     'https://farmacia-api.frcsuite.com',
+  'alpha.app.frcsuite.com':    'https://alpha-api.frcsuite.com',
+};
+```
+
+Por qué es mejor que `fileReplacements`:
+
+- **Una empresa nueva es una línea**, no una compilación nueva ni un proyecto de
+  Pages nuevo. Se agrega la puerta al proyecto y la entrada al mapa.
+- **El artefacto que se prueba en beta es byte a byte el que va a prod.** Con
+  tres builds, no.
+- Es más honesto: una PWA **sí sabe** desde qué host se sirvió. El canal lo
+  sigue definiendo qué proyecto de Pages sirvió la página, que es lo que
+  gobierna el tren de releases.
+
+`ServerConfigService` ya lee `environment.defaultServerUrl` **solo cuando no hay
+nada en `localStorage`**, así que el cambio es acotado: reemplazar esa constante
+por una consulta al mapa con `location.hostname`, y dejar el valor de
+`environment` como fallback para `localhost` en desarrollo. El usuario sigue
+pudiendo cambiar de servidor desde el login o desde Mi cuenta.
+
+> Un hostname que no esté en el mapa —una preview de Pages, por ejemplo— cae al
+> fallback. Que ese fallback **no sea producción** es parte del diseño.
 
 ### E2 · `public/_redirects` — fallback SPA
 
@@ -400,8 +476,8 @@ mismo modo que ya existen los `desktop_channel`.
 
 | # | Riesgo | Mitigación |
 |---|---|---|
-| 1 | **Mixed content**: PWA HTTPS no puede llamar a `http://…:808x` | Fase A es prerequisito, no paralelo |
-| 2 | **Alpha inalcanzable** desde una PWA pública | Cloudflare Tunnel en mauro (A2) |
+| 1 | ~~Mixed content~~ | ✅ Resuelto 2026-08-14 en los tres canales |
+| 2 | ~~Alpha inalcanzable desde una PWA pública~~ | ✅ Resuelto 2026-08-14: túnel `frc-alpha-mauro` |
 | 3 | **mauro es SPOF y está en retiro** (offline 2026-08-08→11) y hostea el canal alpha completo | Asumido para alpha. No poner nada más ahí |
 | 4 | Cerrar 8081/8082 deja fuera a la app Android **y al desktop** | A3 queda explícitamente fuera de alcance |
 | 5 | **Un `fix:` mergeado a `develop` llega a los teléfonos alpha en minutos.** Es la primera vez que este cliente se propaga solo — antes había que subir un AAB a mano | Tratar `develop` con el mismo cuidado que en filial, donde el cron de 15 min ya enseñó la lección |
@@ -415,18 +491,20 @@ mismo modo que ya existen los `desktop_channel`.
 ## 12 · Orden de ejecución
 
 ```
-0 · Mergear PR #1 → #2 → #3
-1 · Fase F  · proteger ramas, crear release/beta
-2 · Fase B  · ci.yml                              ─┐ en paralelo con
-3 · Fase C  · .releaserc.json + release.yml        │ Fase A (infra)
-4 · Fase E  · environments, _redirects, _headers  ─┘
-5 · Fase A1 · TLS farmacia + bodega (fuera de horario)
-6 · Fase A2 · túnel a alpha en mauro
-7 · Fase D  · deploy alpha → validar en un Android y en un iPhone
+✅ Fase A1 · TLS de farmacia y bodega                    hecho 2026-08-14
+✅ Fase A2 · túnel + DNS de alpha                        hecho 2026-08-14
+──────────────────────────────────────────────────────────────────────
+1 · Mergear PR #1 → #2 → #3
+2 · Fase F  · proteger ramas, crear release/beta
+3 · Fase B  · ci.yml
+4 · Fase C  · .releaserc.json + release.yml
+5 · Fase E  · mapa hostname→API, _redirects, _headers, .nvmrc
+6 · Fase D  · 3 proyectos Pages + dominios + Access sobre alpha.app
+7 ·           deploy alpha → validar en un Android y en un iPhone
 8 ·           deploy beta → correr el plan de testeo manual
 9 ·           deploy prod con aprobación
 10 · Fase G · versión por canal en el dashboard
 ```
 
-**El primer deploy real solo puede ser alpha**, y solo después de A2. Todo lo
-anterior se puede preparar y mergear sin infraestructura nueva.
+**La infraestructura ya no bloquea nada.** Lo que queda es trabajo de repo, y
+puede arrancar apenas se cierren las PR abiertas.
