@@ -173,6 +173,27 @@ Aplicado en `develop` de central y mobile. Propagado a `master` y `release/beta`
 
 **Fix:** aumentar `HEALTH_TIMEOUT` en `.github/scripts/deploy.sh`. 300 segundos (5 min) da margen suficiente para migraciones pesadas. Considerar que el health check de central reporta `DOWN` por el indicator AMQP legacy (ver gotcha separado) — el script debe validar que el endpoint responda, no que reporte `UP`.
 
+### GitHub no reapunta las PR encadenadas si no borrás la rama del head (2026-08-15)
+**Qué pasa:** con una cadena `#1 → #2 → #3` donde cada PR sale de la rama de la anterior, al mergear la #1 se espera que la #2 pase a apuntar a `develop` sola. **No pasa** si al mergear se conserva la rama del head.
+
+**Por qué:** el reapuntado automático lo dispara el **borrado** de la rama base, no el merge.
+
+**Fix:** borrar la rama al mergear (o activar *Automatically delete head branches* en el repo), o reapuntar a mano.
+
+> ⚠️ **`gh pr edit --base` falla contra `frc-mobile-pwa`** con un error de Projects classic. Hay que hacerlo por API:
+> ```bash
+> gh api -X PATCH repos/GabFrank/frc-mobile-pwa/pulls/<N> -f base=develop
+> ```
+
+### Una PR abierta antes de que existiera el workflow no tiene checks (2026-08-15)
+**Qué pasa:** se agrega `ci.yml` al repo, y las PR ya abiertas siguen sin ningún check. Con la protección de rama exigiendo ese check, quedan **imposibles de mergear**.
+
+**Por qué:** los workflows de `pull_request` se evalúan ante un **evento nuevo** (push, reopened, synchronize). Una PR que no se movió desde antes del workflow nunca lo dispara.
+
+**Fix:** cualquier push a la rama, o cerrar y reabrir la PR. **Ojo con el orden al montar CI/CD en un repo con PR en vuelo:** conviene mergearlas —o forzarles una corrida— *antes* de exigir el check en la protección, o se traban todas.
+
+**Cuando no se puede esperar:** simular el merge en un worktree aparte y correr ahí el build y los tests antes de aplicarlo. Es lo que se hizo con las PR #1 a #3 de la PWA: sin eso, un merge roto habría publicado igual, porque `release.yml` publica con que haya versión nueva, sin depender de `ci.yml`.
+
 ### `release/beta → master` nunca con squash
 **Qué pasa:** si se hace squash merge, semantic-release colapsa los `feat:`/`fix:` y calcula mal el bump (a veces no genera tag, a veces genera patch cuando debería ser minor).
 
