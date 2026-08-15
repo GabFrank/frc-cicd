@@ -79,6 +79,13 @@ plan:
 | beta | `frc-desk-beta` | `beta.desk.frcsuite.com` | `farmacia-api` |
 | prod | `frc-desk-prod` | `farmacia.desk`, `bodega.desk` | según el hostname |
 
+> ⚠️ **No existe un canal beta como tal en este producto: farmacia *es* el beta.**
+> El central de farmacia corre el canal beta (`4.7.0-beta.2`) y el de bodega el
+> stable (`4.8.0`). O sea que `farmacia.desk` ya cumple el rol de beta contra un
+> backend beta, y `beta.desk` queda estacionada con el marcador de posición hasta
+> que se decida si tiene sentido. La discusión de si farmacia debería ser su
+> propio canal o seguir siendo el beta de facto es aparte de este plan.
+
 ---
 
 ## 3 · Diferencias con la PWA que cambian decisiones
@@ -194,53 +201,50 @@ Sin esto no hay forma de saber qué build está sirviendo `farmacia.desk`.
 
 ---
 
-## 5 · Fase D — el job de deploy
+## 5 · Fase D — el deploy va por afuera del release
 
-Se agrega a `.github/workflows/release.yml` como **tercer job**, hermano de
-`build`, con las mismas condiciones (`needs.release.outputs.version != '' &&
-skip_build != 'true'`). No toca la matriz Linux/Windows existente.
+**Decidido 2026-08-15, y es la diferencia de fondo con la PWA:** el despliegue
+web **no cuelga de `release.yml`**. Es un workflow propio,
+`.github/workflows/deploy-web.yml`, disparado a mano:
 
 ```yaml
-  deploy-web:
-    needs: release
-    if: needs.release.outputs.version != '' && needs.release.outputs.skip_build != 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-        with: { ref: v${{ needs.release.outputs.version }} }
-      - uses: actions/setup-node@v5
-        with: { node-version: '22', cache: npm }     # wrangler 4 exige Node ≥ 22
-      - run: npm ci --legacy-peer-deps
-      - name: Parchear versión                        # misma razón que el job build
-        run: node -e "..."
-      - run: npm run web:build
-      - name: Publicar en Pages
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: |
-          VERSION="${{ needs.release.outputs.version }}"
-          case "$VERSION" in
-            *-alpha*) CANAL=alpha ;;
-            *-beta*)  CANAL=beta ;;
-            *)        CANAL=prod ;;
-          esac
-          npx wrangler pages deploy dist \
-            --project-name="frc-desk-${CANAL}" --branch=main --commit-dirty=true
+on:
+  workflow_dispatch:
+    inputs:
+      ref:    { description: 'Rama o tag a compilar', default: 'develop' }
+      canal:  { type: choice, options: [alpha, beta, prod] }
 ```
 
-Tres cosas que no se deducen del YAML:
+**Por qué, y no como en la PWA.** Ahí publicar es barato: el único artefacto es
+el sitio. Acá el mismo tag que publicaría la web **también empaqueta
+`FRC-Setup.exe` y `FRC.AppImage` y los sirve por `electron-updater`**: cada
+republicación del sitio le mandaría un diálogo *Cerrar y actualizar* a toda la
+flota del canal. Atar las dos cosas convierte "corregir una línea del mapa de
+hostnames" en "actualizar todas las cajas".
 
+Separándolos, la web se publica cuando se quiere y sobre el `ref` que se quiera,
+sin cortar versión. Es exactamente el patrón del workflow `Deploy` del central
+—manual, parametrizado por versión e instancia— y en este ecosistema *deploy* y
+*release* ya eran cosas distintas.
+
+Cuatro cosas que no se deducen del YAML:
+
+- **`workflow_dispatch` solo aparece si el archivo está en la rama por defecto.**
+  Por eso `deploy-web.yml` tiene que entrar a `master` antes que nada; desde ahí
+  se lanza con cualquier `ref`.
 - **El `outputPath` es `dist` a secas.** Angular 15 no genera el subdirectorio
   `browser/` que sí usa la PWA en Angular 21. Copiar la ruta de aquel workflow
   publica un directorio vacío.
 - **Node 22 es obligatorio para wrangler 4.** Con el Node 18 que usan los jobs
   actuales, `npx wrangler` aborta con *"requires at least Node.js v22.0.0"*. Para
   correr a mano desde una máquina con Node 20, usar `npx wrangler@3`.
-- **`prod` no se publica solo.** El caso `*)` del `case` corresponde a un release
-  de `master`. Ese paso va detrás de un `workflow_dispatch` con el environment
-  `production` —que ya existe en el repo con revisor obligatorio—, no del push.
-  alpha y beta sí publican al generarse el release, como en la PWA.
+- **El sello sale del `ref` + el commit**, no de un tag: sin release no hay
+  número de `semantic-release`. Es lo único que después permite saber qué está
+  sirviendo cada puerta.
+
+El environment `production` cuelga solo del canal `prod`
+(`environment: ${{ inputs.canal == 'prod' && 'production' || '' }}`), así que las
+puertas productivas piden aprobación y alpha no.
 
 **Rollback:** Pages guarda cada deployment; volver atrás es un click. Y como no
 hay service worker, el rollback llega al usuario con un simple recargar.
@@ -291,15 +295,20 @@ regla WAF por IP es más barata que Access y no toca la app.
 ✅ environment production con revisor (ya existía)       verificado 2026-08-15
 ✅ V192.5 presente en los tres centrales                 verificado 2026-08-15
 ✅ Secrets de Cloudflare en el repo desktop              hecho 2026-08-15
+✅ Fase E + Fase D en la PR #229 contra master           abierta 2026-08-15
 ────────────────────────────────────────────────────────────────────────
-1 · Fase E · environment.web.prod.ts, mapa hostname→API,
-             esquema derivado, isLocal, _headers, sello        ← una PR a develop
-2 · Fase D · job deploy-web en release.yml                     ← misma PR
-3 · Primer release alpha → validar login WEB en alpha.desk
-4 · Promover a beta → correr el plan de prueba manual
-5 · Deploy prod con aprobación
+1 · Mergear la PR #229 a master → NO genera versión (todo `chore:`/`ci:`)
+2 · Dispatch `Deploy Web` con ref=master, canal=prod → farmacia.desk y bodega.desk
+3 · PR master → develop (obligatoria, como después de un hotfix)
+4 · Dispatch `Deploy Web` con ref=develop, canal=alpha → alpha.desk
+5 · Validar login WEB en las tres puertas
 6 · Versión por canal en el dashboard (leer el sello, como los desktop_channel)
 ```
 
-**La infraestructura no bloquea nada.** Lo que queda es todo trabajo dentro del
-repo `desktop`, y cabe en una sola PR.
+**Por qué a `master` y no a `develop`.** Dos razones que se refuerzan: el
+`workflow_dispatch` necesita el archivo en la rama por defecto, y las puertas
+productivas tienen que servir el código **estable**. Promover `develop` para eso
+sería soltar en `farmacia.desk` todo lo que esté en vuelo —financiero, RRHH— sin
+número de versión que lo delate. `master` está exactamente en `v4.0.0`, sin nada
+pendiente de liberar, así que un merge de puros `chore:`/`ci:` no corta tag y
+**no se empaqueta ni un instalador**.
