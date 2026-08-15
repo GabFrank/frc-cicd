@@ -48,6 +48,25 @@ commit y nunca push directo.
 > orden correcto es un `chore` que corra `prettier --write .` sobre todo el repo
 > y recién después sumar el paso.
 
+| 2026-08-15 | **PR #5 y #4 mergeadas.** El pipeline corrió solo y de punta a punta: tag **`v1.0.0-alpha.1`**, GitHub Release, build sobre el tag y publicación en Pages. `deploy-prod` saltado, como corresponde a un prerelease | GitHub + Cloudflare |
+
+**Lo que quedó probado con ese primer release** — los tres archivos que no se
+pueden validar en desarrollo:
+
+| Chequeo | Resultado |
+|---|---|
+| App publicada (ya no el marcador) | `<title>Bodega Franco</title>` |
+| Deep link `/inventario/12` | **200** → `_redirects` funciona |
+| `Cache-Control` de `ngsw.json` e `index.html` | **`no-cache`** → `_headers` funciona |
+| `ngsw.json` servido | 200 |
+
+> ⚠️ **Desde ahora, cada merge a `develop` publica en alpha.** Es el riesgo #5 de
+> la sección de riesgos, y ya está vivo.
+>
+> El primer release **no lleva el sello de versión**, porque `develop` todavía no
+> tiene `scripts/sello-version.mjs`: la app muestra la fecha de compilación. Se
+> arregla solo cuando entren las PR de código.
+
 **Validación A1, desde fuera de la red** (2026-08-14):
 
 | Chequeo | farmacia-api | bodega-api |
@@ -562,7 +581,9 @@ mismo modo que ya existen los `desktop_channel`.
 ✅ Fase E  · mapa hostname→API, _redirects, _headers     PR #4
 ✅          secrets + environment production con revisor hecho 2026-08-14
 ──────────────────────────────────────────────────────────────────────
-1 · Mergear PR #1 → #2 → #3, y después la #4
+✅ Fase D  · PR #5 y #4 mergeadas, v1.0.0-alpha.1 publicada  hecho 2026-08-15
+──────────────────────────────────────────────────────────────────────
+1 · Mergear PR #1 → #2 → #3 (cada una publica su alpha sola)
 2 · Fase F  · proteger master, develop y release/beta; crear release/beta
 3 ·           primer release alpha → validar en un Android y en un iPhone
 4 ·           Access sobre alpha.app (manual, por el panel)
