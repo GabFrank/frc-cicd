@@ -53,6 +53,34 @@ Poner HTTPS delante de farmacia/bodega es **agregar `server` blocks y correr `ce
 | `francoarevalos.com` | Cloudflare | infra interna (`frc-cicd-dash`, `wa`) |
 | `farmaciafrancopy.com` | **Hostinger** (`dns-parking.com`) | marca farmacia + `hs.farmaciafrancopy.com` (control server headscale). **No está en Cloudflare** — no sirve para Pages ni Tunnel sin migrar los NS, y migrarlos toca la VPN |
 
+## Cloudflare — lo que vive ahí (desde 2026-08)
+
+Credenciales: `CLOUDFLARE_API_TOKEN` y `CLOUDFLARE_ACCOUNT_ID` en el `.env` de
+`frc-cicd`. El token cubre DNS de `frcsuite.com`, Pages, Tunnel y aplicaciones
+de Access. **No cubre leer/crear la organización Zero Trust** (`Access:
+Organizations, Identity Providers and Groups`): eso se hace por panel.
+
+| Recurso | Detalle |
+|---|---|
+| Zona `frcsuite.com` | Registrada 2026-08-14. APIs del central en **nube gris** (LE en el origen); puertas de la PWA y el túnel en **naranja** |
+| Pages | `frc-pwa-alpha`, `frc-pwa-beta`, `frc-pwa-prod`. Deploy por `wrangler pages deploy` desde Actions |
+| Puertas | `alpha.app` · `beta.app` · `farmacia.app` · `bodega.app` — las dos últimas al mismo proyecto `prod` |
+| Túnel | `frc-alpha-mauro` → mauro `:8083`. Ingress gestionado **en la nube**, no en un `config.yml` |
+| Zero Trust | Organización **`frcsuite`** (plan Free). Access sobre `alpha.app`, login por PIN de un solo uso |
+
+Tres cosas que cuestan tiempo si no se saben:
+
+- **Pages no crea el CNAME del dominio personalizado.** Queda en
+  `initializing` hasta que exista un registro apuntando a `<proyecto>.pages.dev`,
+  proxeado.
+- **El certificado de un hostname de tres niveles lo emite Pages**, no el
+  Universal de la zona. Por eso `farmacia.app.frcsuite.com` funciona sin pagar
+  Advanced Certificate Manager — pero **un hostname proxeado de tres niveles que
+  no sea de Pages sí lo necesitaría**. Por eso las APIs son planas.
+- **El nombre de la organización Zero Trust se cambia una sola vez barato.**
+  Aparece en la URL de login y, una vez que hay dispositivos con WARP o links
+  repartidos, cambiarlo rompe cosas. El viejo se libera de inmediato.
+
 **Flyway:** cada instancia usa su propia DB del cluster correspondiente. Migraciones son aditivas — nunca `DROP`/`RENAME` sin estrategia de 2 versiones. Ver [CLAUDE.md de central](/Users/gabfranck/workspace/frc-sistemas-informaticos/frc-comercial/central/CLAUDE.md).
 
 ## Filiales farmacia
