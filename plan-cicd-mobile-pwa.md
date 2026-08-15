@@ -72,6 +72,17 @@ pueden validar en desarrollo:
 
 | 2026-08-15 | PR **#6**: `npm test` también en los jobs de deploy. El merge corrió `release` y **no creó versión** (commits `ci:`), así que nada se republicó | GitHub |
 
+| 2026-08-15 | PR **#7** (`fix:` del meta de app instalable) → **`v1.0.0-alpha.4`** publicada. Primer ciclo completo con el gate nuevo: versión → **tests** → build → publicación | GitHub + Cloudflare |
+
+> **El dominio propio tarda uno o dos minutos más que `*.pages.dev`** en apuntar
+> al deployment nuevo. No es caché —`cf-cache-status: DYNAMIC` y `no-cache` bien
+> servidos—, es la propagación del routing de Pages. Si justo después de un
+> release el dominio sirve la versión anterior, esperar antes de diagnosticar.
+
+> `/index.html` responde **308 hacia `/`**: es la redirección canónica de Pages.
+> El service worker la sigue sin problema; no es un fallo aunque un `curl` sin
+> `-L` devuelva vacío.
+
 **Las convenciones de commit quedaron verificadas en vivo, no asumidas:** el
 merge de la #3 (`docs:`) y el de la #6 (`ci:`) **no generaron release** y sus
 deploys ni arrancaron. Solo `feat:` y `fix:` publican.
