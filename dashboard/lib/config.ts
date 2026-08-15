@@ -83,7 +83,7 @@ export const INSTANCES: InstanceDef[] = [
     port: 8081,
     company: "bodega",
     environment: "bodega",
-    notes: "DB cluster 5551 / bodega",
+    notes: "DB cluster 5552 / bodega (corregido 2026-08-15: en 5551 quedó una `bodega` huérfana con 0 conexiones)",
   },
   {
     kind: "central_instance",
@@ -123,8 +123,15 @@ export const INSTANCES: InstanceDef[] = [
 
   ...[
     { n: 1, ip: "172.25.3.1", os: "linux" },
-    { n: 2, ip: "172.25.3.2", os: "windows" },
-    { n: 3, ip: "172.25.3.3", os: "windows" },
+    // ⚠️ Filial 2 (SUC. CALLE 10) cerró y se dio de baja el 2026-08-11: sub,
+    // slots y publicación borrados, `activo=false` en la DB. Se saca de acá y
+    // se marca `active=0` en dash.db a mano — el seed es upsert-by-name y no
+    // desactiva filas huérfanas.
+    //
+    // Filial 3 corregida a linux el 2026-08-15: es Fedora 38 y su propio
+    // `.filial-id` dice `farmacia-filial-3-linux`. Con `windows` el dashboard
+    // vigilaba un nombre que la filial nunca reporta.
+    { n: 3, ip: "172.25.3.3", os: "linux" },
     { n: 4, ip: "172.25.3.4", os: "linux" },
     { n: 5, ip: "172.25.3.5", os: "linux" },
   ].map(({ n, ip, os }) => ({
