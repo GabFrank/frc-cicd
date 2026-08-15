@@ -34,6 +34,8 @@ commit y nunca push directo.
 
 | 2026-08-14 | PR **#4** abierta contra `develop`; secrets `CLOUDFLARE_API_TOKEN` y `CLOUDFLARE_ACCOUNT_ID` cargados; environment `production` creado con revisor obligatorio y **sin bypass de admin** | GitHub |
 
+| 2026-08-15 | **Access operativo** sobre `alpha.app.frcsuite.com`: aplicación self-hosted, política *allow* por email, sesión de 1 mes, login por PIN de un solo uso | Cloudflare Zero Trust |
+
 > ⚠️ **`develop` todavía no tiene el sello de versión ni el mecanismo de
 > actualización.** `scripts/sello-version.mjs`, `core/actualizacion/` y el
 > `appData` de `ngsw-config.json` viven en las PR abiertas. Los archivos de CI
@@ -384,12 +386,26 @@ Dos cosas que no se deducen del panel:
   Trust Services. Es lo que hace viable el esquema `<empresa>.app.frcsuite.com`
   sin pagar ACM.
 
-**Paso obligatorio de esta fase:** crear la aplicación de **Cloudflare Access
-sobre `alpha.app.frcsuite.com`** con lista de mails. ⚠️ El token actual **no
-alcanza**: leer o crear la organización Zero Trust necesita el permiso
-*Access: Organizations, Identity Providers, and Groups*, que no está en el token
-de hoy. Si la organización nunca se creó, el primer paso es hacerlo desde el
-panel. Es la protección de alpha
+**Access, hecho el 2026-08-15.** Aplicación self-hosted sobre
+`alpha.app.frcsuite.com`, política *allow* por email y sesión de 1 mes. La
+organización Zero Trust es **`bitter-band-4f79`**, plan Free.
+
+**Sin proveedor de identidad configurado, el login es PIN de un solo uso por
+email**: el tester recibe un código y entra, sin cuenta de Google ni nada que
+instalar. Para una lista chica es lo que conviene.
+
+Verificado: `alpha.app` sin sesión devuelve **302** al login de Access; las otras
+tres puertas siguen en **200**; y `alpha-api` sigue devolviendo el **401 del
+ERP**, no un redirect —que es justamente el fallo que se evitó al no poner
+Access sobre la API—.
+
+> ⚠️ El token de Cloudflare **sí puede** crear aplicaciones y políticas de
+> Access. Lo que no puede es **leer la organización** (`/access/organizations`
+> devuelve *Authentication error*), porque eso necesita el permiso *Access:
+> Organizations, Identity Providers, and Groups*. Si un día hace falta crear la
+> organización por API, ese permiso hay que agregarlo.
+
+Agregar un tester es una línea en la política, desde el panel o por API. Es la protección de alpha
 que quedó pendiente de A2 — ahí el flujo de login por navegador funciona natural,
 sin tocar Apollo.
 
