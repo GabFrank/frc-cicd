@@ -80,7 +80,7 @@ Organizations, Identity Providers and Groups`): eso se hace por panel.
 | Pages | `frc-pwa-alpha`, `frc-pwa-beta`, `frc-pwa-prod`. Deploy por `wrangler pages deploy` desde Actions |
 | Puertas | `alpha.app` · `beta.app` · `farmacia.app` · `bodega.app` — las dos últimas al mismo proyecto `prod` |
 | Túnel | `frc-alpha-mauro` → mauro `:8083`. Ingress gestionado **en la nube**, no en un `config.yml` |
-| Zero Trust | Organización **`frcsuite`** (plan Free). Access sobre `alpha.app`, login por PIN de un solo uso |
+| Zero Trust | Organización **`frcsuite`** (plan Free). **Sin aplicaciones**: Access se probó sobre `alpha.app` y se quitó — rompe el service worker (ver gotcha) |
 
 Tres cosas que cuestan tiempo si no se saben:
 

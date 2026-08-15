@@ -173,6 +173,23 @@ Aplicado en `develop` de central y mobile. Propagado a `master` y `release/beta`
 
 **Fix:** aumentar `HEALTH_TIMEOUT` en `.github/scripts/deploy.sh`. 300 segundos (5 min) da margen suficiente para migraciones pesadas. Considerar que el health check de central reporta `DOWN` por el indicator AMQP legacy (ver gotcha separado) — el script debe validar que el endpoint responda, no que reporte `UP`.
 
+### Cloudflare Access delante de una PWA rompe el service worker (2026-08-15)
+**Qué pasa:** la app carga y se usa con normalidad, pero la consola tira en cada arranque:
+```
+Access to fetch at 'https://<equipo>.cloudflareaccess.com/…' (redirected from
+'https://<app>/manifest.webmanifest') has been blocked by CORS policy
+Error: Response not Ok (fetchAndCacheOnce): … returned response 504
+```
+**Y lo que se rompe no es visible: la app deja de poder actualizarse.**
+
+**Por qué:** Access intercepta **todas** las rutas del hostname. El grupo `app` de `ngsw-config.json` está en modo `prefetch` y contiene el shell entero —`/index.html`, `/manifest.webmanifest`, `/*.css`, `/*.js`—. Cuando el worker los pide, Access responde 302 hacia el dominio de login, que es **otro origen**: el CORS lo bloquea, `fetchAndCacheOnce` tira, el grupo nunca termina de instalarse y **la versión nueva no se activa jamás**. La navegación inicial sí funciona porque lleva la cookie, así que el fallo se ve como "errores raros en consola" y no como "la app no se actualiza".
+
+**No tiene arreglo limpio.** Una política de *bypass* para los assets tiene que incluir `/index.html`, y como el `_redirects` de la SPA sirve ese archivo para toda ruta, bypassearlo deja a Access sin nada que proteger.
+
+**Fix:** no poner Access delante de una PWA. En este ecosistema la protección real es el login del ERP — el central rechaza con 401 todo lo que llegue sin `Authorization: Token`, así que el shell estático no expone datos. Si hace falta un filtro, una regla WAF (país, rate limit) no toca al service worker.
+
+> ⚠️ **Después de sacar Access, el navegador queda con un service worker en estado fallido.** No se arregla solo: DevTools → Application → Service Workers → *Unregister* y recargar.
+
 ### GitHub no reapunta las PR encadenadas si no borrás la rama del head (2026-08-15)
 **Qué pasa:** con una cadena `#1 → #2 → #3` donde cada PR sale de la rama de la anterior, al mergear la #1 se espera que la #2 pase a apuntar a `develop` sola. **No pasa** si al mergear se conserva la rama del head.
 

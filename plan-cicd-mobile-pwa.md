@@ -428,6 +428,10 @@ Dos cosas que no se deducen del panel:
   Trust Services. Es lo que hace viable el esquema `<empresa>.app.frcsuite.com`
   sin pagar ACM.
 
+**Access: probado y descartado el 2026-08-15.** Rompía el service worker — el
+detalle está abajo. Lo que sigue describe cómo se montó, porque el
+procedimiento sirve para cualquier app que **no** sea una PWA.
+
 **Access, hecho el 2026-08-15.** Aplicación self-hosted sobre
 `alpha.app.frcsuite.com`, política *allow* por email y sesión de 1 mes. La
 organización Zero Trust es **`frcsuite`** (plan Free), renombrada el 2026-08-15
@@ -451,7 +455,29 @@ Access sobre la API—.
 > Organizations, Identity Providers, and Groups*. Si un día hace falta crear la
 > organización por API, ese permiso hay que agregarlo.
 
-Agregar un tester es una línea en la política, desde el panel o por API. Es la protección de alpha
+Agregar un tester es una línea en la política, desde el panel o por API.
+
+> ## ⚠️ Se quitó el mismo día: Access es incompatible con el service worker
+>
+> Probando en un dispositivo real apareció en consola, en cada carga, un CORS
+> contra `frcsuite.cloudflareaccess.com` al pedir `manifest.webmanifest`, y un
+> `Response not Ok (fetchAndCacheOnce)`.
+>
+> **Access intercepta todas las rutas del hostname**, y el grupo `app` del
+> service worker está en `prefetch` con el shell entero adentro. El worker pide
+> esos archivos, Access lo manda al login —otro origen—, el CORS lo bloquea y el
+> grupo **nunca termina de instalarse**: la versión nueva no se activa. La
+> navegación inicial funciona porque lleva la cookie, así que el fallo se
+> disfraza de "errores raros en consola" y no de "la app no se actualiza".
+>
+> **No hay arreglo limpio:** bypassear los assets obliga a incluir
+> `/index.html`, y como el `_redirects` sirve ese archivo para toda ruta, Access
+> queda sin nada que proteger.
+>
+> **Decisión: alpha queda sin Access**, igual que beta y prod. La protección
+> real es el login del ERP: el central rechaza con 401 todo lo que llegue sin
+> `Authorization: Token`, y el shell estático no tiene datos. Si alguna vez hace
+> falta un filtro, una regla WAF no toca al service worker. Es la protección de alpha
 que quedó pendiente de A2 — ahí el flujo de login por navegador funciona natural,
 sin tocar Apollo.
 
