@@ -108,6 +108,46 @@ funcionó. **Antes de tocar la DB de alpha, confirmar el host.**
 
 **Fix:** el zombi de la VM DO se apagó el 2026-08-14 (`systemctl stop`; ya estaba `disabled`, o sea llevaba 3 semanas vivo solo porque nadie reinició la VM). El 8083 de `159.203.86.103` quedó libre. **Antes de creerle a cualquier doc sobre alpha, verificar contra `.current-version` del host.** Ojo también con `frc-cicd/dashboard/lib/config.ts`: tenía `central-alpha` apuntando al zombi, o sea el dashboard vigilaba el host equivocado.
 
+### `DROP SUBSCRIPTION` se cuelga si el publisher no contesta — y el fallback puede romper a otro (2026-08-15)
+**Qué pasa:** `DROP SUBSCRIPTION x` queda colgado indefinidamente (>4 min, sin timeout). El `ALTER SUBSCRIPTION x DISABLE` previo sí funciona.
+
+**Por qué:** aunque esté deshabilitada, el `DROP` abre una **conexión nueva** al publisher para borrarle el slot. Si esa conexión no prospera, espera para siempre y **bloquea a cualquier otra consulta sobre `pg_subscription`** en esa base — el síntoma secundario es que "psql se cuelga" en cosas que no tienen nada que ver.
+
+**Fix:**
+```sql
+ALTER SUBSCRIPTION x DISABLE;
+ALTER SUBSCRIPTION x SET (slot_name = NONE);   -- desliga el slot remoto
+DROP SUBSCRIPTION x;                            -- ya no intenta conectarse
+```
+Limpiar los backends que quedaron: `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='<db>' AND pid<>pg_backend_pid();`
+
+> ⚠️ **`slot_name = NONE` deja el slot vivo en el publisher, y ese slot puede NO ser huérfano.**
+> Antes de borrarlo con `pg_drop_replication_slot`, **verificar quién lo está usando**:
+> ```sql
+> SELECT pid, client_addr, application_name, state FROM pg_stat_replication;
+> ```
+> Pasó el 2026-08-15: el slot `alpha_filial2_sub` en mauro parecía huérfano tras
+> limpiar una suscripción duplicada en central, y en realidad lo consumía la
+> suscripción **viva** del propio alpha de mauro. Borrarlo habría cortado la
+> replicación del canal alpha. Un `active=true` con `client_addr` = la IP del
+> **mismo host** significa que el consumidor es local, no el que acabás de tocar.
+
+### Dos suscripciones con el mismo nombre peleando por un slot (2026-08-15)
+**Qué pasa:** una suscripción queda en `state=startup` para siempre y la replicación del otro consumidor se ve intermitente.
+
+**Por qué:** un slot lo puede tomar **un solo** consumidor. Si una instancia se muda de host y la suscripción se recrea con el mismo `slot_name` sin borrar la vieja, las dos compiten: una streamea y la otra reintenta en `startup`.
+
+**Cómo se ve:** `SELECT pid, client_addr, application_name, state FROM pg_stat_replication;` devuelve **dos filas con el mismo `application_name`** y distinta `client_addr`.
+
+**Fix:** borrar la suscripción del host que ya no corresponde, con el procedimiento de arriba (`slot_name = NONE`), y dejar intacto el slot que usa la viva.
+
+### Slot inactivo anclando WAL en bodega — `bodega_filial25_central_sub` (visto 2026-08-15)
+**Qué pasa:** en el cluster **5552** de central (DB `bodega`, productiva) hay **38 slots y 1 inactivo**, `bodega_filial25_central_sub`, reteniendo **991 MB de WAL**. Crece mientras la filial 25 no vuelva.
+
+**Es el mismo modo de falla que la filial 5 de farmacia** (~3,8 GB), pero este no estaba documentado. Disco al 41% (62 G de 159 G) — no urgente, sí acumulativo.
+
+**Qué NO hacer:** borrar el slot a la ligera. Al volver la filial, sin slot necesita resync completo. Primero averiguar si la sucursal sigue operando.
+
 ## Repos / CI/CD
 
 ### Deploy workflow resuelve versión incorrecta (alpha/beta)

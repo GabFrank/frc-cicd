@@ -25,12 +25,18 @@ Credenciales SSH en el `.env` del repo frc-cicd.
 > ⚠️ **Alpha ya no está en el servidor central: está en `mauro` (`172.25.0.172`).**
 > Ver la sección de mauro. Tampoco existe la instancia «beta piloto» del 8084.
 >
-> Quedan dos restos de eso, y los dos engañan:
-> - Una **DB `alpha` huérfana** en el cluster 5553 de este host. La instancia viva
->   usa la del **5553 de mauro**. Un fix SQL corrido acá no cambia nada de lo que
->   se ve en la app y parece que funcionó.
-> - El `frc-alpha.service` que la usaba se apagó el 2026-08-14. Detalle en el
->   gotcha «Hay dos `frc-alpha.service`».
+> **Limpiado el 2026-08-15**, así que el servidor ya no miente:
+> - La DB `alpha` huérfana del cluster 5553 (563 MB) se borró. **El cluster 5553
+>   de este host quedó vacío** — se puede apagar si nadie lo reclama.
+> - Se borró también su suscripción `alpha_filial2_sub`, que seguía replicando
+>   desde mauro hacia una base que nadie leía **y competía por el slot con la
+>   suscripción viva del alpha**. Ver el gotcha de suscripciones duplicadas.
+> - El unit `frc-alpha.service` se eliminó (`daemon-reload` corrido) y
+>   `/opt/frc-backend-central/alpha/` pasó a `alpha.retirado-20260814`, con una
+>   copia del unit adentro.
+>
+> Queda `/opt/frc-backend-central/beta/`, del piloto que tampoco existe: sin unit
+> asociado, sin tocar.
 
 > En 5551 también quedó una DB `bodega` huérfana con 0 conexiones (verificado 2026-07-07): la viva es la del 5552.
 
