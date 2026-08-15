@@ -25,11 +25,10 @@ segundo artefacto del mismo código, para el uso administrativo.
 | 2026-08-15 | Las 4 puertas asociadas a su proyecto; certificados emitidos por Google Trust Services | Cloudflare Pages |
 | 2026-08-15 | Verificado que el `environment` `production` del repo `desktop` ya existe con revisor obligatorio (`GabFrank`) | GitHub |
 | 2026-08-15 | Verificado que la migración `V192.5` (enum `tipo_dispositivo` con `WEB`) está en `v4.7.0-beta.2`, `v4.8.0` y `v4.7.0-alpha.39` → **los tres centrales productivos ya la tienen** | repo `central` |
+| 2026-08-15 | `CLOUDFLARE_API_TOKEN` y `CLOUDFLARE_ACCOUNT_ID` cargados como secrets del repo `desktop` | GitHub |
 
-> ⚠️ **Pendiente de una acción manual:** cargar `CLOUDFLARE_API_TOKEN` y
-> `CLOUDFLARE_ACCOUNT_ID` como secrets del repo `desktop`. Los valores están en
-> `frc-cicd/.env`. El comando quedó bloqueado por el clasificador de permisos de
-> la sesión; se carga desde el panel de GitHub o con `gh secret set`.
+**La infraestructura está completa.** Todo lo que queda es trabajo dentro del
+repo `desktop`.
 
 ---
 
@@ -87,10 +86,11 @@ plan:
 No copiar el plan de la PWA a ciegas. Cuatro cosas son distintas:
 
 1. **No hay service worker.** El desktop no usa `@angular/service-worker`. Eso
-   elimina de un saque el problema que mató a Access en la PWA (el worker no
-   podía instalar el grupo `prefetch` porque Access redirigía los assets a otro
-   origen). **Acá Access sí es viable** y es la forma natural de cerrar `alpha` y
-   `beta` a la lista de testers.
+   elimina el problema que mató a Access en la PWA (el worker no podía instalar
+   el grupo `prefetch` porque Access redirigía los assets a otro origen) — pero
+   Access igual no va, por la razón de §6. Lo que sí cambia es la actualización:
+   **acá el único mecanismo es el `index.html` sin cachear**, no hay diálogo de
+   *Actualizar* ni versión que se quede pegada. Recargar alcanza.
 2. **`useHash: true`** (`app-routing.module.ts:16`). Todas las rutas viven después
    del `#`, así que el servidor solo ve `/`. **No hace falta `_redirects`** — el
    404 de deep link, que fue el bug clásico de la PWA, acá no existe.
@@ -247,20 +247,25 @@ hay service worker, el rollback llega al usuario con un simple recargar.
 
 ---
 
-## 6 · Fase F — cerrar los accesos
+## 6 · Fase F — protección: la misma en las cuatro puertas
 
-**Access sobre `alpha.desk` y `beta.desk`.** Es lo que la PWA no pudo tener. La
-organización Zero Trust `frcsuite` (plan Free) ya existe y el login por PIN de un
-solo uso por email no exige que el tester instale nada.
+**Decidido 2026-08-15: sin Access en ningún canal.** Técnicamente se podía —a
+diferencia de la PWA, el desktop no tiene service worker, así que Access no
+rompería nada— y aun así no va.
 
-Va **sobre la app, nunca sobre la API**: `alpha-api` tiene que seguir devolviendo
-el 401 del ERP. Access delante de un endpoint que se consume por XHR desde otro
-origen manda la request al login y el navegador lo reporta como un error de CORS
-opaco, que es la desconfiguración clásica.
+El razonamiento es que **Access protegería justamente lo que no tiene datos**: lo
+que sirve Pages es un shell estático, HTML y JavaScript, idéntico al `.exe` que
+cualquiera puede bajar del GitHub Release. Los datos están del otro lado, y ahí
+la protección real es el token del ERP: el central rechaza con 401 todo lo que
+llegue sin `Authorization: Token`. Poner una segunda puerta delante del shell
+suma fricción para el tester sin mover la superficie de ataque.
 
-`farmacia.desk` y `bodega.desk` quedan abiertas, protegidas por el login del ERP
-igual que la PWA: el central rechaza con 401 todo lo que llegue sin
-`Authorization: Token`, y el shell estático no tiene datos.
+Así que `alpha.desk`, `beta.desk`, `farmacia.desk` y `bodega.desk` quedan las
+cuatro iguales y abiertas, con el login del ERP como única barrera — igual que la
+PWA, y por la misma razón.
+
+Si alguna vez hace falta filtrar —restringir alpha a la oficina, por ejemplo— una
+regla WAF por IP es más barata que Access y no toca la app.
 
 ---
 
@@ -285,17 +290,16 @@ igual que la PWA: el central rechaza con 401 todo lo que llegue sin
 ✅ Marcador de posición en los tres canales              hecho 2026-08-15
 ✅ environment production con revisor (ya existía)       verificado 2026-08-15
 ✅ V192.5 presente en los tres centrales                 verificado 2026-08-15
+✅ Secrets de Cloudflare en el repo desktop              hecho 2026-08-15
 ────────────────────────────────────────────────────────────────────────
-1 · Cargar los dos secrets de Cloudflare en el repo desktop   ← manual, bloquea el deploy
-2 · Fase E · environment.web.prod.ts, mapa hostname→API,
+1 · Fase E · environment.web.prod.ts, mapa hostname→API,
              esquema derivado, isLocal, _headers, sello        ← una PR a develop
-3 · Fase D · job deploy-web en release.yml                     ← misma PR
-4 · Primer release alpha → validar login WEB en alpha.desk
-5 · Access sobre alpha.desk y beta.desk (panel Zero Trust)
-6 · Promover a beta → correr el plan de prueba manual
-7 · Deploy prod con aprobación
-8 · Versión por canal en el dashboard (leer el sello, como los desktop_channel)
+2 · Fase D · job deploy-web en release.yml                     ← misma PR
+3 · Primer release alpha → validar login WEB en alpha.desk
+4 · Promover a beta → correr el plan de prueba manual
+5 · Deploy prod con aprobación
+6 · Versión por canal en el dashboard (leer el sello, como los desktop_channel)
 ```
 
-**La infraestructura no bloquea nada.** Salvo los dos secrets, lo que queda es
-todo trabajo dentro del repo `desktop`.
+**La infraestructura no bloquea nada.** Lo que queda es todo trabajo dentro del
+repo `desktop`, y cabe en una sola PR.
