@@ -120,13 +120,12 @@ Dos cosas aprendidas reiniciando:
                  │     · donfrancorestaurante.com
                  │   :8082  central farmacia  4.7.0-beta.2   ← canal beta, productivo
                  │   :8081  central bodega    4.8.0          ← canal stable, productivo
-                 │   :8083  ⚰️ frc-alpha zombi 4.1.0-alpha.67 — APAGADO 2026-08-14
-                 │   :8084  ⚰️ no escucha
+                 │   (nada mas: alpha NO vive aca)
                  │
                  └─ mauro · 172.25.0.172 · tailnet 100.64.0.2 · SIN IP PÚBLICA
-                     :8083  central alpha   4.7.0-alpha.39  ← el alpha DE VERDAD
+                     :8083  central alpha   4.7.0-alpha.39  ← TODO el canal alpha
                      :8080  filial alpha    5.0.0-alpha.7
-                     PG 5551 / 5552 / 5553 locales
+                     PG 5551 / 5552 / 5553 locales (la DB `alpha` viva es esta)
 ```
 
 **Dos hallazgos que cambian planes anteriores:**
@@ -136,6 +135,9 @@ Dos cosas aprendidas reiniciando:
    No hace falta: son dos `server` blocks y un `certbot --nginx`.
 2. **El canal alpha entero (central + filial) vive en mauro, que no tiene IP
    pública.** Ningún cliente servido por HTTPS público lo alcanza sin un túnel.
+   En la VM de producción había un `frc-alpha.service` congelado desde julio,
+   apagado el 2026-08-14, y una instancia «beta piloto» en el 8084 que ya no
+   existía. **Alpha no está en el servidor central y no vuelve.**
 
 ---
 

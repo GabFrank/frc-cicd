@@ -15,16 +15,24 @@ Credenciales SSH en el `.env` del repo frc-cicd.
 | ZeroTier `zteb4nkfeh` | `192.168.100.209` | **segunda red ZT** — scope a relevar antes de apagar ZeroTier |
 | Tailnet | `100.64.0.3` = `central.hs.farmacia` | destino de la migración |
 
-Hostea las instancias productivas del backend central, con 2 clusters PostgreSQL en paralelo (**verificado 2026-08-14**):
+**Acá corren dos instancias, las dos productivas** (verificado 2026-08-14):
 
-| Puerto | Instancia | Canal pipeline | Cluster PG | DB | Versión 2026-08-14 | Notas |
-|---|---|---|---|---|---|---|
-| 8081 | bodega | stable | **5552** | bodega | `4.8.0` | productivo — verificado 2026-07-07 (67 conexiones activas en 5552; en 5551 queda una DB `bodega` huérfana con 0 conexiones) |
-| 8082 | farmacia | beta | 5551 | farmacia | `4.7.0-beta.2` | productivo — ya corre canal beta |
-| 8083 | ~~alpha~~ | — | 5553 | alpha | `4.1.0-alpha.67` | ⚰️ **zombi apagado el 2026-08-14** (`stop`, ya estaba `disabled`). El alpha real vive en mauro. Ver el gotcha «Hay dos `frc-alpha.service`». La DB `alpha` del cluster 5553 quedó intacta |
-| 8084 | ~~beta piloto~~ | — | — | — | — | ⚰️ **no escucha** (verificado 2026-08-14). Instancia muerta |
+| Puerto | Instancia | Canal pipeline | Cluster PG | DB | Versión 2026-08-14 |
+|---|---|---|---|---|---|
+| 8081 | bodega | stable | **5552** | bodega | `4.8.0` |
+| 8082 | farmacia | beta | 5551 | farmacia | `4.7.0-beta.2` |
 
-> ⚠️ **El central alpha NO está acá, está en mauro (`172.25.0.172:8083`).** Ver la sección de mauro. La VM DO tenía un `frc-alpha.service` propio corriendo desde el 23-jul-2026 con una versión vieja y sin usuarios — es el zombi de la tabla.
+> ⚠️ **Alpha ya no está en el servidor central: está en `mauro` (`172.25.0.172`).**
+> Ver la sección de mauro. Tampoco existe la instancia «beta piloto» del 8084.
+>
+> Quedan dos restos de eso, y los dos engañan:
+> - Una **DB `alpha` huérfana** en el cluster 5553 de este host. La instancia viva
+>   usa la del **5553 de mauro**. Un fix SQL corrido acá no cambia nada de lo que
+>   se ve en la app y parece que funcionó.
+> - El `frc-alpha.service` que la usaba se apagó el 2026-08-14. Detalle en el
+>   gotcha «Hay dos `frc-alpha.service`».
+
+> En 5551 también quedó una DB `bodega` huérfana con 0 conexiones (verificado 2026-07-07): la viva es la del 5552.
 
 **Users SSH:**
 - `deploy` → user oficial para workflows CI (sudoers NOPASSWD para `systemctl restart frc-*.service`). El workflow `Deploy` del repo central hace `ssh deploy@` vía SSH key.
