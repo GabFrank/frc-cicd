@@ -327,7 +327,7 @@ Mientras conviven los dos caminos, **una filial puede ser alcanzable por dos IPs
 | ID | Nombre | IP tailnet | Tag | Qué es |
 |---|---|---|---|---|
 | 3 | `frc-cicd-vm` | 100.64.0.1 | — | la propia VM Hetzner (dashboard frc-cicd) |
-| 4 | `frc-mauro-subnet` | 100.64.0.2 | — | **subnet-router** `172.25.0.0/16` = mauro `172.25.0.172`. También host del server alpha (`:8083`). **Offline desde 2026-08-08** |
+| 4 | `frc-mauro-subnet` | 100.64.0.2 | — | **subnet-router** `172.25.0.0/16` = mauro `172.25.0.172`. **Hostea el canal alpha entero** (central `:8083` y filial `:8080`) y el túnel `cloudflared` de `alpha-api.frcsuite.com`. Volvió online el 2026-08-11; verificado el 2026-08-15 |
 | 5 | `central` | 100.64.0.3 | — | VM cloud `frc-servidor` (DigitalOcean). `accept-dns=true` |
 | 6 | `farmacia-filial-6` | 100.64.0.4 | `tag:filial` | filial farmacia 6 = **`sucursal_id 7`, SUC. II**. Ex-`farmacia-nueva`. Sin IP `172.25.*` |
 | 7 | `pc-central` | 100.64.0.5 | — | PC de administración |

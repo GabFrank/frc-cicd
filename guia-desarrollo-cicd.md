@@ -1,5 +1,10 @@
 # Guia de Desarrollo con CI/CD — FRC Sistemas Informaticos
 
+> **Alcance: los 5 repos del producto.** El flujo de ramas, commits, PRs y
+> releases de esta guia vale igual para `central`, `filial`, `desktop`, `mobile`
+> y `mobile-pwa`. Lo unico que cambia por componente es **como se deploya** el
+> artefacto — ver la seccion 4 y, para la PWA, [plan-cicd-mobile-pwa.md](plan-cicd-mobile-pwa.md).
+
 **Para:** Todo el equipo de desarrollo
 **Fecha:** 2026-03-26
 **Version:** Final (consolidado de 3 propuestas: claude, gemini, codex)

@@ -2,13 +2,17 @@
 
 6 repos en total: 5 del producto + 1 de CI/CD.
 
-> `frc-mobile-pwa` (#5) es el más nuevo y **todavía no tiene CI/CD**. Las convenciones de branches y semantic-release de este documento aplican a los **4 originales**; ver su entrada para el detalle.
+> `frc-mobile-pwa` (#5) **ya tiene CI/CD** desde 2026-08-15 (en PR, sin mergear). Las convenciones de branches y semantic-release de este documento aplican a **los 5**; lo único distinto es su mecanismo de deploy — ver su entrada.
 
 ## 1. `GabFrank/franco-system-backend-servidor` (central)
 
 Path local: `/Users/gabfranck/workspace/frc-sistemas-informaticos/frc-comercial/central/`
 
-Stack: Spring Boot 2.1.15, **Java 8**, GraphQL (graphql-java-kickstart), PostgreSQL, Maven. Package root `com.franco.dev`. Versión actual serie 4.x.
+Stack: Spring Boot **2.7.18**, target **Java 11** (`<java.version>11</java.version>` en el POM), GraphQL (graphql-java-kickstart), PostgreSQL, Maven. Package root `com.franco.dev`. Versión actual serie 4.x.
+
+> ⚠️ **Corregido 2026-08-15: este documento decía «2.1.15 / Java 8», que es el stack de *filial*.** Los stacks divergieron cuando se actualizó central y nadie actualizó esta entrada.
+>
+> ⚠️ **Y en producción corre sobre JVM 17**, no 11: los units `frc-farmacia` y `frc-bodega` de la VM usan `java-17-openjdk` (`/usr/bin/java` también es 17). El target de compilación y la JVM de ejecución **no coinciden**, y eso importa para tzdata, TLS y comportamiento de GC.
 
 **Deploy:** GitHub Actions workflow `Deploy` con `workflow_dispatch`. Inputs:
 - `version` — tag a deployar (e.g. `v4.1.0-beta.3`)
@@ -54,11 +58,24 @@ Path local: `/Users/gabfranck/workspace/frc-sistemas-informaticos/frc-comercial/
 
 **Repo privado.** Stack: Angular 21 standalone zoneless + Material 21 + Apollo 4. Sin Ionic, sin Capacitor: web puro. Node 20.20. Dev server en **4300**.
 
-**Estado (2026-08-05): en desarrollo, sin CI/CD todavía.** No tiene `.github/workflows/`, ni `.releaserc.json`, ni tags. No aplica el flujo de semantic-release de los otros 4 — **todavía**. Cuando entre, hay que decidir el mecanismo de deploy, que no tiene equivalente en los otros repos: una PWA se despliega como sitio estático + service worker, y la actualización la maneja `@angular/service-worker`, no `electron-updater` ni Play Store.
-
 **Por qué existe:** reemplaza la APK de Capacitor. Motivos: **soporte de iOS** (lo que la APK no daba), actualización sin Play Store, y que solo el 3,5% del código tocaba APIs nativas.
 
-**Deploy previsto:** subdominios HTTPS por Cloudflare. `getUserMedia`, service worker y geolocalización exigen contexto seguro, así que servir por IP de LAN no alcanza. Ver `docs/analisis/runbook-cloudflare.md` en el repo.
+**CI/CD (2026-08-15).** Mismo `semantic-release` y mismo flujo de ramas que los otros cuatro. Lo distinto es el deploy: no hay JAR ni AAB, es un **sitio estático en Cloudflare Pages** más un service worker.
+
+| Canal | Proyecto Pages | Puerta | API por defecto |
+|---|---|---|---|
+| alpha | `frc-pwa-alpha` | `alpha.app.frcsuite.com` (con **Access**) | `alpha-api.frcsuite.com` → mauro `:8083` por túnel |
+| beta | `frc-pwa-beta` | `beta.app.frcsuite.com` | `farmacia-api.frcsuite.com` → DO `:8082` |
+| prod | `frc-pwa-prod` | `farmacia.app` y `bodega.app` | `farmacia-api` / `bodega-api` |
+
+- **alpha y beta publican solos** al generarse el release; **prod exige aprobación** (environment `production` de GitHub, sin bypass de admin).
+- **El backend por defecto sale del hostname**, no del build: `core/config/api-por-host.ts`. Una sola compilación sirve las cuatro puertas, y el artefacto que se prueba en beta es byte a byte el que va a prod.
+- **La actualización la maneja `@angular/service-worker`**, con un diálogo que el usuario puede postergar 2 horas. No hay `electron-updater` ni Play Store.
+- El deploy usa `wrangler pages deploy` con los secrets `CLOUDFLARE_API_TOKEN` y `CLOUDFLARE_ACCOUNT_ID` del repo.
+
+Plan completo, decisiones y gotchas: **`frc-cicd/plan-cicd-mobile-pwa.md`**.
+
+> ⚠️ **El `runbook-cloudflare.md` del repo describe un plan que NO se ejecutó así.** Proponía Cloudflare Origin CA con la nube naranja; se hizo con **nginx + Let's Encrypt y la nube gris**, porque nginx y certbot ya estaban instalados en la VM y el proxy naranja corta los WebSocket ociosos a ~100 s.
 
 > ⚠️ **`frc-mobile` sigue vivo** en modo mantenimiento durante la transición. Un bug reportado de "el mobile" puede ser de cualquiera de los dos: preguntar cuál.
 

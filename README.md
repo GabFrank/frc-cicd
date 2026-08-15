@@ -1,13 +1,14 @@
 # frc-cicd
 
-Documentación, runbooks y scripts para la implementación de CI/CD en los 4 componentes de **FRC Sistemas Informáticos** (Franco Systems ERP v3):
+Documentación, runbooks y scripts para la implementación de CI/CD en los **5 componentes** de **FRC Sistemas Informáticos** (Franco Systems ERP v3):
 
 | Componente | Repo | Stack |
 |---|---|---|
-| **central** | `GabFrank/franco-system-backend-servidor` | Spring Boot 2.1.15 / Java 8 / GraphQL / PostgreSQL |
+| **central** | `GabFrank/franco-system-backend-servidor` | Spring Boot **2.7.18** / target Java **11** / GraphQL / PostgreSQL. Corre sobre **JVM 17** en producción |
 | **filial** | `GabFrank/franco-system-backend-filial` | Spring Boot 2.1.15 / Java 8 / GraphQL / PostgreSQL |
 | **desktop** | `GabFrank/frc-sistemas-integrados-angular` | Angular 15 + Electron 22 |
-| **mobile** | `GabFrank/frc-mobile` | Angular 15 + Ionic 6 + Capacitor 5 |
+| **mobile** | `GabFrank/frc-mobile` | Angular 15 + Ionic 6 + Capacitor 5. **En mantenimiento**, lo reemplaza `mobile-pwa` |
+| **mobile-pwa** | `GabFrank/frc-mobile-pwa` (privado) | Angular 21 standalone zoneless + Material 21 + Apollo 4. Se despliega en **Cloudflare Pages** — ver [plan-cicd-mobile-pwa.md](plan-cicd-mobile-pwa.md) |
 
 ## Stack dashboard + WhatsApp (Docker)
 
