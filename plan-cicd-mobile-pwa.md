@@ -388,7 +388,11 @@ Dos cosas que no se deducen del panel:
 
 **Access, hecho el 2026-08-15.** Aplicación self-hosted sobre
 `alpha.app.frcsuite.com`, política *allow* por email y sesión de 1 mes. La
-organización Zero Trust es **`bitter-band-4f79`**, plan Free.
+organización Zero Trust es **`frcsuite`** (plan Free), renombrada el 2026-08-15
+desde el `bitter-band-4f79` autogenerado: el nombre aparece en la URL de login
+que ve el tester, y cambiarlo **después** de repartir el link rompería las
+inscripciones de WARP y dejaría links muertos. Se hizo antes de invitar a nadie,
+que es cuando sale gratis.
 
 **Sin proveedor de identidad configurado, el login es PIN de un solo uso por
 email**: el tester recibe un código y entra, sin cuenta de Google ni nada que
