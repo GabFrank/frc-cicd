@@ -67,6 +67,18 @@ pueden validar en desarrollo:
 > tiene `scripts/sello-version.mjs`: la app muestra la fecha de compilación. Se
 > arregla solo cuando entren las PR de código.
 
+| 2026-08-15 | **Cadena de código mergeada** (#1, #2, #3) → `v1.0.0-alpha.2` y `v1.0.0-alpha.3` publicadas solas. El merge de la #3, que era `docs:`, **no generó release** y el deploy ni arrancó | GitHub |
+| 2026-08-15 | **Fase F**: `master` y `develop` protegidas igual que central —0 aprobaciones, check `build` obligatorio, `strict`, `enforce_admins`, sin force push— y **squash desactivado a nivel repo** | GitHub |
+
+**El sello ya funciona.** `alpha.app` sirve
+`appData: {etiqueta: "v1.0.0-alpha.3", commit: "31c3e55"}`: la PR #2 trajo
+`scripts/sello-version.mjs`, así que la app se nombra sola y el diálogo de
+actualización dice la versión real, no la fecha.
+
+> **`release/beta` no existe todavía, y es a propósito.** Crear la rama dispara
+> un release y publica en `beta.app`. Beta tiene que recibir una build
+> **promovida** después de correr el plan de testeo, no la primera que pase.
+
 **Validación A1, desde fuera de la red** (2026-08-14):
 
 | Chequeo | farmacia-api | bodega-api |
@@ -583,8 +595,11 @@ mismo modo que ya existen los `desktop_channel`.
 ──────────────────────────────────────────────────────────────────────
 ✅ Fase D  · PR #5 y #4 mergeadas, v1.0.0-alpha.1 publicada  hecho 2026-08-15
 ──────────────────────────────────────────────────────────────────────
-1 · Mergear PR #1 → #2 → #3 (cada una publica su alpha sola)
-2 · Fase F  · proteger master, develop y release/beta; crear release/beta
+✅ Fase F  · master y develop protegidas, squash off       hecho 2026-08-15
+✅          PR #1, #2 y #3 mergeadas → alpha.2 y alpha.3   hecho 2026-08-15
+──────────────────────────────────────────────────────────────────────
+1 · Correr el plan de testeo manual contra alpha.app (55 casos pendientes)
+2 · Crear release/beta cuando se promueva, y protegerla igual
 3 ·           primer release alpha → validar en un Android y en un iPhone
 4 ·           Access sobre alpha.app (manual, por el panel)
 5 ·           chore: prettier --write . y sumar el paso al CI
