@@ -151,7 +151,7 @@ Para cambiar el ingress se edita en el panel o por API, no en el host.
 
 Ambos corren como user `deploy`, con el mismo layout `releases/` + symlink `current` + `.current-version` que las filiales. El central alpha lee `/opt/frc-backend-central/alpha/.env` y su unit declara `After=postgresql-beta.service`.
 
-**Tres clusters PostgreSQL locales:** `5551`, `5552`, `5553` (escuchan en `0.0.0.0`).
+**Tres clusters PostgreSQL locales:** `5551`, `5552`, `5553` (escuchan en `0.0.0.0`). **La DB del central alpha es `alpha` en el `5553` de acá** (`SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5553/alpha`), no la del mismo nombre que quedó huérfana en la VM de producción.
 
 > ⚠️ **mauro no tiene IP pública.** Su único acceso desde fuera de la LAN/ZeroTier es el tailnet (`100.64.0.2`). Cualquier cliente **público** que necesite hablarle a alpha —una PWA servida por HTTPS, por ejemplo— necesita un túnel (Cloudflare Tunnel) o que el dispositivo esté enrolado en headscale. No alcanza con abrir un puerto: no hay dónde abrirlo.
 

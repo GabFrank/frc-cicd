@@ -98,13 +98,16 @@ Dos cosas aprendidas reiniciando:
 
 ### Lo que falta
 
-| # | Hueco | Impacto |
-|---|---|---|
-| 1 | Sin `.github/`, sin `.releaserc.json`, sin tags, sin `release/beta` | No hay CI ni versión |
-| 2 | `angular.json` **no tiene `fileReplacements`** → `environment.prod.ts` es código muerto; toda build apunta a `http://159.203.86.103:8083` | El canal no cambia de backend |
-| 3 | Sin fallback SPA ni control de caché HTTP | Deep links 404; updates que llegan tarde o inconsistentes |
-| 4 | El central habla **HTTP plano** | **Bloqueante duro**: mixed content |
-| 5 | Alpha vive en un host **sin IP pública** | La PWA pública no puede alcanzarlo |
+> Este era el estado al abrir el plan. **Todo resuelto**, salvo `release/beta`
+> que espera al merge de las PR.
+
+| # | Hueco | Impacto | Estado |
+|---|---|---|---|
+| 1 | Sin `.github/`, sin `.releaserc.json`, sin tags, sin `release/beta` | No hay CI ni versión | ✅ PR #4 · falta crear `release/beta` |
+| 2 | `angular.json` sin `fileReplacements` → `environment.prod.ts` código muerto; toda build apuntaba a `http://159.203.86.103:8083` | El canal no cambia de backend | ✅ PR #4 — resuelto con el mapa hostname→API, y `environment.prod.ts` eliminado |
+| 3 | Sin fallback SPA ni control de caché HTTP | Deep links 404; updates tarde o inconsistentes | ✅ PR #4 |
+| 4 | El central habla **HTTP plano** | **Bloqueante duro**: mixed content | ✅ Fase A1 |
+| 5 | Alpha vive en un host **sin IP pública** | La PWA pública no puede alcanzarlo | ✅ Fase A2 |
 
 ---
 

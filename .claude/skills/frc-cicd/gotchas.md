@@ -100,6 +100,12 @@ systemctl show frc-alpha.service -p ActiveEnterTimestamp
 ```
 Si la fecha es de semanas atrás y el journal solo tiene ruido de escaneo de internet (`Invalid character found in method name [0x16 0x03 0x01…]` = ClientHello TLS contra puerto HTTP plano), es el zombi.
 
+**Y hay dos bases `alpha`.** La instancia viva en mauro usa
+`jdbc:postgresql://localhost:5553/alpha` — el cluster **de mauro**. En la VM de
+producción quedó una DB `alpha` huérfana en su propio 5553. Un fix SQL corrido
+contra la huérfana no cambia nada de lo que se ve en la app, y parece que sí
+funcionó. **Antes de tocar la DB de alpha, confirmar el host.**
+
 **Fix:** el zombi de la VM DO se apagó el 2026-08-14 (`systemctl stop`; ya estaba `disabled`, o sea llevaba 3 semanas vivo solo porque nadie reinició la VM). El 8083 de `159.203.86.103` quedó libre. **Antes de creerle a cualquier doc sobre alpha, verificar contra `.current-version` del host.** Ojo también con `frc-cicd/dashboard/lib/config.ts`: tenía `central-alpha` apuntando al zombi, o sea el dashboard vigilaba el host equivocado.
 
 ## Repos / CI/CD
