@@ -70,6 +70,12 @@ pueden validar en desarrollo:
 | 2026-08-15 | **Cadena de código mergeada** (#1, #2, #3) → `v1.0.0-alpha.2` y `v1.0.0-alpha.3` publicadas solas. El merge de la #3, que era `docs:`, **no generó release** y el deploy ni arrancó | GitHub |
 | 2026-08-15 | **Fase F**: `master` y `develop` protegidas igual que central —0 aprobaciones, check `build` obligatorio, `strict`, `enforce_admins`, sin force push— y **squash desactivado a nivel repo** | GitHub |
 
+| 2026-08-15 | PR **#6**: `npm test` también en los jobs de deploy. El merge corrió `release` y **no creó versión** (commits `ci:`), así que nada se republicó | GitHub |
+
+**Las convenciones de commit quedaron verificadas en vivo, no asumidas:** el
+merge de la #3 (`docs:`) y el de la #6 (`ci:`) **no generaron release** y sus
+deploys ni arrancaron. Solo `feat:` y `fix:` publican.
+
 **El sello ya funciona.** `alpha.app` sirve
 `appData: {etiqueta: "v1.0.0-alpha.3", commit: "31c3e55"}`: la PR #2 trajo
 `scripts/sello-version.mjs`, así que la app se nombra sola y el diálogo de
