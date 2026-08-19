@@ -240,6 +240,35 @@ Error: Response not Ok (fetchAndCacheOnce): … returned response 504
 
 **Fix pendiente:** cuando una versión mayor de la action lo imponga, migrar a array `tracks: [beta]`. No urgente.
 
+### `npx wrangler` aborta con Node 20 — usar `wrangler@3` a mano
+**Qué pasa:** publicar a Cloudflare Pages desde la máquina local falla con `Wrangler requires at least Node.js v22.0.0. You are using v20.20.2`. No es un warning: no sube nada.
+
+**Por qué:** wrangler 4 subió el piso de Node a 22, y `npx wrangler` resuelve siempre a la última.
+
+**Fix:** `npx wrangler@3 pages deploy ...` para corridas manuales, y `node-version: '22'` en el job de Actions que publique. Los jobs viejos del repo `desktop` usan Node 18, así que el job web no puede compartir esa configuración.
+
+### Un dominio de Pages queda `initializing` si el CNAME no existe todavía
+**Qué pasa:** asociar el dominio personalizado por API lo deja en `initializing` para siempre.
+
+**Fix:** crear primero el CNAME `<sub> → <proyecto>.pages.dev` **proxeado** en la zona, y recién después asociar el dominio al proyecto. Pasa a `pending` y en unos minutos a `active`, con certificado emitido por **Google Trust Services** (no el Universal de la zona) — que es lo que hace viable un hostname de tres niveles tipo `alpha.desk.frcsuite.com` sin pagar Advanced Certificate Manager. Los cuatro dominios no se activan a la vez: verificado 2026-08-15, tres tardaron ~3 min y el cuarto ~8.
+
+### Un workflow `workflow_dispatch` solo aparece si vive en la rama por defecto — y eso obliga al back-merge (2026-08-19)
+**Qué pasa:** el workflow **Deploy Web** del repo `desktop` falla con `ref=develop` —que es su valor **por defecto**— en el paso "Sellar version en el build":
+
+```bash
+sed -i "s/version: '0.0.0'/version: '${SELLO}'/" src/environments/environment.web.prod.ts
+```
+
+`sed` sale con **exit 2**: no puede leer el archivo. Falla **antes** de tocar Cloudflare, así que no es problema de secrets — buscarlo ahí es perder la tarde.
+
+**Por qué:** GitHub solo muestra el botón "Run workflow" si el archivo del workflow existe en la **rama por defecto** (`master`). Por eso la infra de deploy web se mergeó directo a master (PR #229, `ci/deploy-web → master`), y eso está bien: era necesario para poder dispararlo. Lo que se omitió fue el **back-merge obligatorio `master → develop`**. Junto con el workflow viajaron los **insumos de build** (`environment.web.prod.ts`, `webEndpoints.ts`), que quedaron solo en master; compilar `develop` sin ellos revienta.
+
+**Regla:** si un workflow tiene que vivir en `master` para ser disparable, sus insumos de build tienen que existir en **todas** las ramas que ese workflow vaya a compilar. Después de cualquier merge a `master`, el PR `master → develop` no es opcional.
+
+**Trampa asociada — una config puede apuntar a un archivo inexistente durante meses.** El `angular.json` de `desktop` referencia `environment.web.prod.ts` en la configuración `web-production` **desde la migración a Angular 15** (`52656f49`), pero el archivo recién se creó el 2026-08-18. O sea que `npm run web:build` estuvo roto en `develop` todo ese tiempo sin que nadie lo notara, simplemente porque nadie corría ese target. Un `fileReplacements` roto no falla hasta que alguien lo usa.
+
+**Cómo verificarlo antes de mergear un back-merge así:** medir la divergencia (`git rev-list --count A..B` en los dos sentidos), listar los archivos tocados por ambos lados (`comm -12` de los dos `git diff --name-only` contra la base común) y hacer el merge de prueba en una rama descartable corriendo el build real. Si no hay solapamiento de archivos, el riesgo es semántico, no textual — y el build es lo único que lo descarta.
+
 ## Mobile
 
 ### CapacitorUpdater line en `capacitor.config.ts` es código muerto
@@ -311,6 +340,34 @@ done   # OK = 2**14 (16384), MAL = 2**12 (4096). arm64-v8a es el ABI que importa
 **Fix:** ver [dashboard-ops.md](dashboard-ops.md) para la receta sqlite.
 
 ## Replicación PostgreSQL
+
+### El stream de replicación se corta pero ping y `select` pasan (camino ZeroTier)
+**Qué pasa:** una sub de subida (filial→central) entra en un ciclo eterno: el apply worker arranca, vive 60s sin recibir **ni un keepalive**, muere con `ERROR: terminating logical replication worker due to timeout`, y reintenta a los 5 min. Visto 2026-08-15 en `filial_farmacia_1_sub`; la sucursal quedó ~1h sin replicar.
+
+**Por qué engaña:** todo lo barato da OK y manda a buscar el problema donde no está.
+- `ping` 0% loss, MTU 2800 OK.
+- `psql` normal contra la filial responde, y un `select` que devuelve 20 MB viaja filial→central en 3,7s.
+- `IDENTIFY_SYSTEM` con `replication=database` responde.
+- `pg_recvlogical` con un **slot temporal nuevo** streamea perfecto.
+- En la filial, `pg_stat_replication` muestra el walsender en `streaming` / `WalSenderWaitForWAL` con `sent_lsn` **adelante** de lo que central dice haber recibido.
+- En central, el apply worker está `active`, sin `pg_blocking_pids`, esperando en `LogicalApplyMain`.
+
+O sea: el publisher jura que manda, el subscriber no recibe nada, y ninguna prueba puntual reproduce el corte. Solo se ve mirando `received_lsn`/`last_msg_receipt_time` **congelados durante la ventana de 60s en que el worker vive**.
+
+**Causa:** el camino ZeroTier de esa filial. La conninfo apunta a `172.25.3.X`, pero central **sale con IP origen `172.25.0.200`** (su segunda IP ZT en la misma interfaz, ver hosts.md) — verificable con `select client_addr from pg_stat_activity where backend_type='walsender'` **en la filial**. Ese camino de vuelta se corta para el stream sostenido, no para tráfico puntual.
+
+**Fix (30 segundos, sin cortar nada):** mover la conninfo de la sub a la IP del tailnet. Sin reiniciar PG, sin tocar el slot, sin perder datos, reversible:
+```sql
+-- en central; \gexec evita imprimir el password en pantalla
+select format('ALTER SUBSCRIPTION %I CONNECTION %L', subname,
+              replace(subconninfo,'172.25.3.1','100.64.0.11'))
+from pg_subscription where subname='filial_farmacia_1_sub' \gexec
+```
+Confirmado: worker estable >10 min con keepalives cada ~30s, contra 60-130s de vida antes.
+
+**Antes de escalar a reiniciar bases:** el restart de la sub (`DISABLE`+`ENABLE`) **drena el backlog pero no cura** — vuelve a morir en 1-2 min. Sirve como paliativo, no como fix. Reiniciar PG de la filial es innecesario y corta el POS de la sucursal.
+
+**Regla que deja:** ante `terminating logical replication worker due to timeout` con la filial viva y pingueable, sospechar del camino de red antes que de PG, y probar el tailnet primero. Las filiales sanas del mismo momento (4 y 6) ya replicaban por `100.64.*`.
 
 ### DROP DATABASE falla con replication slots activos
 **Qué pasa:** `DROP DATABASE beta WITH (FORCE);` devuelve `ERROR: database "beta" is used by an active logical replication slot`. Ni siquiera `WITH (FORCE)` (PG 13+) puede contra slots activos.
