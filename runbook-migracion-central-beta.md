@@ -1,5 +1,12 @@
 # Runbook — Migración Central a canal beta
 
+> ⚠️ **Documento histórico — la topología cambió** (verificado 2026-08-15).
+> La migración que describe se ejecutó, pero desde entonces: **el central alpha
+> se mudó a `mauro`** (en la VM quedó una instancia zombi, apagada el
+> 2026-08-14), **la instancia beta piloto `:8084` ya no existe**, y **la DB
+> `bodega` viva está en el cluster 5552**, no en el 5551. Antes de reusar
+> cualquier comando de acá, confirmar contra `hosts.md` de la skill `frc-cicd`.
+
 **Estado:** v1 — validado en piloto (`172.25.1.200:8084`). Listo para ejecutar en farmacia real (`172.25.1.200:8082`).
 
 **Última actualización:** 2026-04-17

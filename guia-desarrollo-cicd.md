@@ -1,5 +1,10 @@
 # Guia de Desarrollo con CI/CD — FRC Sistemas Informaticos
 
+> **Alcance: los 5 repos del producto.** El flujo de ramas, commits, PRs y
+> releases de esta guia vale igual para `central`, `filial`, `desktop`, `mobile`
+> y `mobile-pwa`. Lo unico que cambia por componente es **como se deploya** el
+> artefacto — ver la seccion 4 y, para la PWA, [plan-cicd-mobile-pwa.md](plan-cicd-mobile-pwa.md).
+
 **Para:** Todo el equipo de desarrollo
 **Fecha:** 2026-03-26
 **Version:** Final (consolidado de 3 propuestas: claude, gemini, codex)
@@ -343,13 +348,14 @@ Esto es seguro porque si se necesita rollback a N, la columna vieja todavia exis
 ### Naming de migraciones
 
 ```
-V{numero}__{descripcion_con_underscores}.sql
+V{numero}.5__{descripcion_con_underscores}.sql
 ```
 
-- Numero **secuencial y unico** (V1, V2, V3...)
-- **Nunca reusar** un numero
-- **Nunca modificar** una migracion ya aplicada
-- Descripcion clara: `V5__agregar_indice_producto_codigo.sql`
+- **Usar sufijo `.5`** en las migraciones nuevas (ej. `V176.5__agregar_indice.sql`) — **no `.0` ni el entero pelado**.
+  - **Motivo:** Flyway **normaliza el `.0`** → trata `V176` == `V176.0`. Así, un `V176.0` de una rama **colisiona** con un `V176` de otra al mergear (nos pasó al integrar develop: su `V151__add_trigram` chocó con un `V151.0__...` de una feature). El sufijo **`.5` no se normaliza a entero**, así que nunca choca con la variante entera, y ademas slotea la migracion **entre** los enteros de develop (`out-of-order=true` lo soporta).
+  - **Cuidado:** el `.5` evita el choque entero-vs-`.0`, pero **no** evita que dos ramas elijan el mismo `V176.5`. Igual conviene tomar el **proximo entero libre** de la rama + `.5`, y coordinar si hay features paralelas grandes.
+- Numero **unico**; **nunca reusar** ni **modificar** una migracion ya aplicada.
+- Descripcion clara: `V176.5__agregar_indice_producto_codigo.sql`
 
 ### Probar localmente antes de pushear
 

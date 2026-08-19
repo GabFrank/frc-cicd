@@ -83,7 +83,7 @@ export const INSTANCES: InstanceDef[] = [
     port: 8081,
     company: "bodega",
     environment: "bodega",
-    notes: "DB cluster 5551 / bodega",
+    notes: "DB cluster 5552 / bodega (corregido 2026-08-15: en 5551 quedó una `bodega` huérfana con 0 conexiones)",
   },
   {
     kind: "central_instance",
@@ -103,27 +103,35 @@ export const INSTANCES: InstanceDef[] = [
     displayName: "Central · Alpha",
     componentSlug: "central",
     channelName: "alpha",
-    host: "172.25.1.200",
+    // Corregido 2026-08-14: el central alpha corre en mauro, NO en la VM
+    // DigitalOcean. Esta entrada apuntaba a 172.25.1.200:8083, que era un
+    // `frc-alpha.service` zombi congelado en 4.1.0-alpha.67 desde el 23-jul
+    // y sin usuarios — o sea el dashboard vigilaba el host equivocado.
+    //
+    // Se usa la IP del tailnet y no 172.25.0.172 porque ZeroTier está en
+    // retiro y llegar por 172.25.* depende de la ruta que anuncia mauro;
+    // 100.64.0.2 es el propio nodo. Ambas se probaron desde el contenedor.
+    host: "100.64.0.2",
     port: 8083,
     environment: "alpha",
-    notes: "DB cluster 5551 / alpha",
+    notes: "mauro (100.64.0.2 / 172.25.0.172), junto con la filial alpha. Clusters PG locales 5551/5552/5553",
   },
-  {
-    kind: "central_instance",
-    name: "central-beta-piloto",
-    displayName: "Central · Beta piloto",
-    componentSlug: "central",
-    channelName: "beta",
-    host: "172.25.1.200",
-    port: 8084,
-    environment: "beta",
-    notes: "DB cluster 5552 / beta",
-  },
+  // ⚰️ `central-beta-piloto` (172.25.1.200:8084) se retiró el 2026-08-14: el
+  // puerto no escucha y la instancia no existe. Se saca de acá **y** se marca
+  // `active=0` en dash.db a mano — el seed es upsert-by-name y no desactiva
+  // filas huérfanas, así que borrar la entrada sola no la retira del dashboard.
 
   ...[
     { n: 1, ip: "172.25.3.1", os: "linux" },
-    { n: 2, ip: "172.25.3.2", os: "windows" },
-    { n: 3, ip: "172.25.3.3", os: "windows" },
+    // ⚠️ Filial 2 (SUC. CALLE 10) cerró y se dio de baja el 2026-08-11: sub,
+    // slots y publicación borrados, `activo=false` en la DB. Se saca de acá y
+    // se marca `active=0` en dash.db a mano — el seed es upsert-by-name y no
+    // desactiva filas huérfanas.
+    //
+    // Filial 3 corregida a linux el 2026-08-15: es Fedora 38 y su propio
+    // `.filial-id` dice `farmacia-filial-3-linux`. Con `windows` el dashboard
+    // vigilaba un nombre que la filial nunca reporta.
+    { n: 3, ip: "172.25.3.3", os: "linux" },
     { n: 4, ip: "172.25.3.4", os: "linux" },
     { n: 5, ip: "172.25.3.5", os: "linux" },
   ].map(({ n, ip, os }) => ({
