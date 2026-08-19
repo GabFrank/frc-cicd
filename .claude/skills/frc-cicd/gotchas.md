@@ -269,6 +269,30 @@ sed -i "s/version: '0.0.0'/version: '${SELLO}'/" src/environments/environment.we
 
 **Cómo verificarlo antes de mergear un back-merge así:** medir la divergencia (`git rev-list --count A..B` en los dos sentidos), listar los archivos tocados por ambos lados (`comm -12` de los dos `git diff --name-only` contra la base común) y hacer el merge de prueba en una rama descartable corriendo el build real. Si no hay solapamiento de archivos, el riesgo es semántico, no textual — y el build es lo único que lo descarta.
 
+### Un back-merge por PR deja `master` como head, y "Update branch" publica a producción (2026-08-19)
+**Qué pasa:** se abrió un PR de back-merge `master → develop` (head=`master`, base=`develop`), que es la forma natural de traer master hacia develop. Alguien usó el botón **"Update branch"** del PR y eso publicó un **release estable** que nunca pasó por `release/beta`.
+
+**Por qué:** "Update branch" mergea la **base dentro del head**. En un PR normal (`feature → develop`) eso es rutina inofensiva. En un back-merge el head **es `master`**, así que la operación mergea `develop` dentro de `master` y **escribe directo en master** — sin PR, sin review, sin pasar por beta. El `Release` de master se dispara con el push y publica el canal estable.
+
+**Cómo se reconoce en la historia:**
+- commit con `committer: GitHub` (se generó del lado del servidor, no por un push local),
+- mensaje `Merge branch 'develop' into master` (el merge de un PR diría `Merge pull request #N from ...`),
+- un `CI (pull_request)` con `headBranch=master` segundos después: el PR se resincronizó porque su head recibió un commit,
+- y el commit aparece asociado al PR de back-merge (`/commits/<sha>/pulls`).
+
+**Cómo evitarlo:** no hacer el back-merge con `master` como head. Crear una rama intermedia desde master y abrir el PR desde ahí:
+
+```bash
+git checkout -b chore/backmerge-master-develop origin/master
+gh pr create --base develop --head chore/backmerge-master-develop
+```
+
+El head es una rama descartable, y "Update branch" no puede tocar `master`.
+
+**Lo que dejó al descubierto — la protección real no es la documentada.** Verificado el 2026-08-19 en `desktop`: `enforce_admins=false`, `required_approving_review_count=0`, sin restricción de push directo. La guía afirma `enforce_admins=true` en las tres ramas long-lived de los cuatro repos. Con `enforce_admins=true` esa escritura habría sido rechazada. **Pendiente de corregir y de verificar repo por repo en vez de confiar en la doc.**
+
+**Daño colateral del episodio:** el estable quedó con un desktop que le pide al central operaciones que producción no tenía (`valesPendientes`, `pagarValesMixto`, `crearValeParaPago`, `desconfirmarTransferenciaItem`). Cliente y backend se promueven juntos o el cliente rompe funciones en producción.
+
 ## Mobile
 
 ### CapacitorUpdater line en `capacitor.config.ts` es código muerto
