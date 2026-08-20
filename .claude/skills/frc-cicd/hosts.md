@@ -103,12 +103,20 @@ Tres cosas que cuestan tiempo si no se saben:
 
 | Filial | Sucursal | IP / nodo tailnet | OS | Puerto app | Servicio | Notas |
 |---|---|---|---|---|---|---|
-| 1 | SUC. CENTRAL | `172.25.3.1` · `farmacia-filial-1` **100.64.0.11** | Linux (Fedora 38) | 8082 | `frc.service` | hostname: localhost.localdomain. Enrolada 2026-08-11 |
+| 1 | SUC. CENTRAL | `192.168.0.146` · `farmacia-filial-1` **100.64.0.5** | Linux (**Fedora 44**) | 8082 | `frc.service` | ⚠️ **Servidor migrado el 2026-08-20** — ver nota abajo. PostgreSQL **16 nativo** (`postgresql-16.service`, puerto 5551), **no Docker**. Java **Temurin 17** (`/usr/lib/jvm/temurin-17-jdk`). Es a la vez puesto de trabajo (KDE) |
 | ~~2~~ | ~~SUC. CALLE 10~~ | ~~`172.25.3.2`~~ | ~~Windows (10 Pro, SUC-GASUR)~~ | — | — | ⚰️ **SUCURSAL CERRADA — dada de baja 2026-08-11.** Sub, slots, publicación borrados; `activo=false`. Última venta `2026-06-11 22:02`. Las credenciales `FILIAL_2_*` del `.env` ya no apuntan a nada vivo |
 | 3 | SUC. ITAIPU | `172.25.3.3` · `farmacia-filial-3` **100.64.0.12** | Linux (Fedora 38) | 8082 | `frc.service` | Enrolada 2026-08-11 |
 | 4 | SUC. III | `172.25.3.4` · `farmacia-filial-4` **100.64.0.7** | Linux (Fedora 43) | 8082 | `frc.service` | hostname `fedora-server`. **Ya estaba enrolada como `centro2`**; renombrada + taggeada 2026-08-11. **Su replicación ya usa la IP tailnet** |
 | 5 | SUC. SAN MIGUEL | `172.25.3.5` | Linux (Fedora) | 8082 | `frc.service` | 🔴 **APAGADA, sucursal abierta.** No responde ni desde central; no replica desde `2026-05-31`. **Sus 2 slots anclan ~3,8 GB de WAL en central** (`4108667872 bytes`, medido 2026-08-13) — al encenderla se libera solo. Requiere ir al local. Sin enrolar. ⚠️ Al encenderla va a aplicar de una vez todas las migraciones acumuladas del canal, sin nadie mirando |
 | 6 | **SUC. II** (`sucursal_id = 7`) | `farmacia-nueva` **100.64.0.4** | Linux | 8082 | | **Solo existe en el tailnet** — no tiene IP `172.25.3.*`. Por eso faltaba en este inventario. Enrolada pero **sin tag**. Única filial con replicación 100% por tailnet en ambos sentidos. ⚠️ **Tampoco está en `monitored_servers` del dashboard** (verificado 2026-08-13) → no genera alertas y no se la alcanza por SSH desde fuera del tailnet. Para saber su estado: los *deployments* de GitHub, que ella misma reporta |
+
+> ### Filial 1 migró de máquina el 2026-08-20
+>
+> El servidor viejo (`172.25.3.1` / `100.64.0.11`, Fedora 38, PG 16 **en Docker**) **sigue vivo en `192.168.0.145` pero como CAJA**, no como servidor: `frc.service` disabled, contenedor `postgres` con `restart=no` y detenido, sin cron. Se lo conserva como rollback y **tiene enchufada la impresora de `ticket5`**, que el servidor nuevo alcanza por `ipp://192.168.0.145:631/printers/ticket5` — por eso su CUPS debe quedar encendido y habilitado.
+>
+> Nodos headscale: **`farmacia-filial-1` = `100.64.0.5`** (el nuevo) y `farmacia-filial-1-viejo` = `100.64.0.11`. El nuevo **no tiene ZeroTier**: sus suscripciones salen por tailnet contra `central.hs.farmacia`.
+>
+> Plan, runbook y lecciones: `frc-cicd/plan-migracion-filial1-farmacia.md` y `frc-cicd/runbook-cutover-filial1.md`. Los gotchas nuevos (locale, timezone, `origin = none`, ruta real de las imágenes, backends de CUPS) están en [gotchas.md](gotchas.md).
 
 > ⚠️ **Trampa de numeración: el número de filial NO es el `sucursal_id`.** `filial_farmacia_6_*` significa "la sexta filial", y atiende a **`SUC. II` (`sucursal_id = 7`)** — verificado por sus ventas (861 en 60 días, `sucursal_id = 7`). La sucursal `6 = DEPOSITO` **no tiene filial server** (`ip`/`puerto` en NULL). Antes de tocar cualquier cosa por número, confirmar contra `empresarial.sucursal` y contra las ventas de la filial.
 
@@ -224,6 +232,17 @@ Resumen mínimo:
 - ACL `group:admin → *:*` = **malla completa**. Enrolar con `--user 4` da acceso a toda la flota. Leer la sección de seguridad del runbook antes de crear keys.
 
 **Conflicto de puerto clave:** el dashboard usa `3000`, ya ocupado por farmacia Next.js → en la VM va a `127.0.0.1:3001` detrás de nginx (subdominio + TLS + auth). Evolution (8090) y n8n (5678) no chocan.
+
+## PCs de trabajo / administración
+
+Nodos del tailnet que no son servidores: PCs desde donde se opera la flota. Todos van con `-u 4` **sin tag** (malla completa) — ver la tabla de categorías en [runbooks/headscale.md](runbooks/headscale.md).
+
+| Nodo | Tailnet | Máquina | Notas |
+|---|---|---|---|
+| `pc-gabriel` | `100.64.0.26` | iMac de Gabriel, macOS 13.7.1 (x86) | Enrolado 2026-08-19. `tailscale` instalado por **Homebrew formula** (no cask): sin bottle para macOS 13 x86 → **compila desde fuente, ~10 min**. `tailscaled` corre por LaunchDaemon propio (`/Library/LaunchDaemons/com.tailscale.tailscaled.plist`, state en `/Library/Tailscale/`), **no** por `brew services` — `sudo brew` no ve el prefix de Homebrew del user y falla con "Formula not installed". Sigue en ZeroTier (`172.25.0.36`) en paralelo: la ruta `172.25/16` la gana ZT y las dos conviven |
+| `pc-central`, `pc-casa`, `central-caja3` | `100.64.0.5` · `.6` · `.8` | — | Ya estaban enrolados. Sin relevar en detalle |
+
+> **Desde una PC enrolada, las filiales farmacia se alcanzan directo por su IP tailnet** — `ssh franco@100.64.0.11` para filial 1, sin jump por la VM. El jump `deploy@178.105.107.171 → filial` sigue siendo el camino desde una máquina **fuera** del tailnet.
 
 ## Filial piloto Windows
 

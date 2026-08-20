@@ -56,6 +56,7 @@ Un "user" en headscale es el dueño de un nodo, y es lo que la ACL usa para agru
 | Listar keys | `headscale preauthkeys list` — **no acepta `--user`**, lista todas |
 | Expirar key | `headscale preauthkeys expire -i <authkey-id>` — por **ID numérico de la key**, no por el string |
 | Taggear nodo ya enrolado | `headscale nodes tag -i <node-id> -t tag:filial` |
+| Mover nodo de user | `headscale nodes move --identifier <id> --user <uid>` — ⚠️ **no acepta `-i`** (a diferencia de `tag`/`rename`, que sí). Taggear ya lo pasa a `tagged-devices`, que es lo que evalúa la ACL, así que el `move` suele ser innecesario |
 | Nodos / rutas | `headscale nodes list` · `headscale nodes list-routes` |
 
 Los comandos toman el **ID numérico** del user, no el nombre (`-u 5`).
@@ -198,6 +199,53 @@ Flags según el rol del nodo:
 | Consumidor de la subred on-prem (ej. la VM, un dashboard) | `--accept-routes` |
 | Subnet-router (expone una LAN al tailnet) | `--advertise-routes=172.25.0.0/16` |
 | Host que ya llega a `172.25.*` nativamente (ej. `central`) | nada — dejar `--accept-routes=false` |
+
+#### macOS — variante propia (verificado 2026-08-19, macOS 13 x86)
+
+El instalador `install.sh` no cubre macOS. Dos caminos; el que se usó es el **formula**:
+
+```bash
+brew install tailscale          # ⚠️ sin bottle para macOS 13 x86 → compila desde fuente, ~10 min
+```
+
+Tres cosas que cuestan tiempo si no se saben:
+
+- **`sudo brew services start tailscale` falla** con `Formula tailscale is not installed`: root no ve el prefix de Homebrew del user. Se resuelve con un LaunchDaemon propio (abajo), no peleando con brew.
+- **`sudo` no funciona desde una sesión sin TTY** (el `!` de Claude Code, scripts remotos): `sudo: a terminal is required to read the password`. Los pasos con root se corren en Terminal.app.
+- **El cask (`Tailscale.app`)** es la otra opción; para apuntarlo a headscale necesita `ALTERNATE_LOGIN_SERVER` por `defaults`. Más cómodo (arranca al login) pero pide aprobar extensión de red en Ajustes.
+
+LaunchDaemon (persistencia real), en `/Library/LaunchDaemons/com.tailscale.tailscaled.plist`:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key><string>com.tailscale.tailscaled</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/opt/tailscale/bin/tailscaled</string>
+        <string>--state=/Library/Tailscale/tailscaled.state</string>
+        <string>--socket=/var/run/tailscaled.socket</string>
+    </array>
+    <key>RunAtLoad</key><true/>
+    <key>KeepAlive</key><true/>
+    <key>StandardOutPath</key><string>/var/log/tailscaled.log</string>
+    <key>StandardErrorPath</key><string>/var/log/tailscaled.log</string>
+</dict>
+</plist>
+```
+
+```bash
+sudo mkdir -p /Library/Tailscale
+sudo chown root:wheel /Library/LaunchDaemons/com.tailscale.tailscaled.plist
+sudo chmod 644 /Library/LaunchDaemons/com.tailscale.tailscaled.plist
+sudo launchctl load -w /Library/LaunchDaemons/com.tailscale.tailscaled.plist
+sudo tailscale up --login-server https://hs.farmaciafrancopy.com --authkey <KEY> \
+  --hostname pc-<persona> --accept-routes --accept-dns=true
+```
+
+En Apple Silicon el prefix es `/opt/homebrew/opt/tailscale/bin/tailscaled` — ajustar el plist.
 
 ### 3. Verificar y aprobar rutas (solo subnet-routers)
 
