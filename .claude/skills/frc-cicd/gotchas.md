@@ -402,7 +402,24 @@ gh pr create --base develop --head chore/backmerge-master-develop
 
 El head es una rama descartable, y "Update branch" no puede tocar `master`.
 
-**Lo que dejó al descubierto — la protección real no es la documentada.** Verificado el 2026-08-19 en `desktop`: `enforce_admins=false`, `required_approving_review_count=0`, sin restricción de push directo. La guía afirma `enforce_admins=true` en las tres ramas long-lived de los cuatro repos. Con `enforce_admins=true` esa escritura habría sido rechazada. **Pendiente de corregir y de verificar repo por repo en vez de confiar en la doc.**
+**Lo que dejó al descubierto — la protección real no era la documentada.** Verificado el 2026-08-19 en `desktop`: `enforce_admins=false`, `required_approving_review_count=0`, sin restricción de push directo. Con `enforce_admins=true` esa escritura habría sido rechazada.
+
+**✅ Corregido y auditado repo por repo el 2026-08-20.** La auditoría encontró dos huecos, no uno:
+
+| Repo | `master` / `develop` antes | `release/beta` antes |
+|---|---|---|
+| central · filial · mobile-pwa | ya `enforce_admins=true` | **sin protección** |
+| **desktop · mobile** | **`enforce_admins=false`** | **sin protección** |
+
+`release/beta` **no estaba protegida en ninguno de los cinco repos**, pese a ser la rama desde la que se promueve a producción. Estado actual, verificado:
+
+- `master` y `develop`: `enforce_admins=true` en los cinco.
+- `release/beta`: PR obligatorio (0 revisiones), `enforce_admins=true`, sin force-push ni borrado, y los mismos checks que exige `master` (`build`; en desktop los dos: `build (ubuntu-latest)` y `build (windows-latest)`).
+- **`frc-mobile-pwa` todavía no tiene la rama `release/beta` creada**, así que su protección se hizo con un **ruleset por patrón** (`refs/heads/release/*`, id `21101348`) que aplica en cuanto la rama exista. Se dejó **sin checks requeridos** porque no se pudo verificar que su CI se dispare en PRs contra `release/*` — agregarlos tras el primer PR.
+
+**Antes de exigir checks en una rama, confirmar que el CI se dispara para PRs contra ella** (`on: pull_request: branches: [...]`). Si no se dispara, el check nunca reporta y los merges quedan bloqueados para siempre. Los cuatro repos originales usan `[develop, release/*, main, master]`, por eso ahí fue seguro.
+
+**Y verificar que `semantic-release` no empuje commits a la rama** antes de activar `enforce_admins`: los cuatro repos usan solo `commit-analyzer` + `release-notes-generator` + `@semantic-release/github`, que crean tags y releases (no bloqueados por protección de rama), no commits.
 
 **Daño colateral del episodio:** el estable quedó con un desktop que le pide al central operaciones que producción no tenía (`valesPendientes`, `pagarValesMixto`, `crearValeParaPago`, `desconfirmarTransferenciaItem`). Cliente y backend se promueven juntos o el cliente rompe funciones en producción.
 
