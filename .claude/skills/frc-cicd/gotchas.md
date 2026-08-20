@@ -23,6 +23,119 @@ rm /home/franco/notif-log-purge.sh                    # borra el script
 ```
 Fix de raíz pendiente: el servicio debe tener retención propia (o dejar de loguear cada envío). No hay índice en `fecha_envio`; mientras el cron la mantenga chica el seq-scan del DELETE es barato, pero si se re-habilita el crecimiento conviene un índice.
 
+### Un `pg_dump`/`restore` de una filial revela FKs que el origen viola (2026-08-19)
+**Qué pasa:** al restaurar el dump de una filial en una máquina nueva, `pg_restore` termina con "errores ignorados" y el esquema queda con **menos FKs que el origen**. En filial 1 farmacia fueron 3 FK menos (365 → 362) por solo 4 filas huérfanas.
+
+**Por qué:** la replicación lógica aplica los cambios con `session_replication_role = replica`, que **no dispara los triggers de FK**. La filial acumula filas que violan constraints marcados `convalidated=true` — eran válidos cuando se crearon y los datos derivaron después. El origen nunca se queja; el `pg_restore`, que sí valida, es el primero en verlo.
+
+**Cómo se resuelve:** recrear los FK faltantes como `NOT VALID` — protege toda escritura futura, tolera las filas viejas y deja el esquema a la par sin tocar datos en plena ventana de cutover. Limpiar los huérfanos y validar después, con calma.
+
+**Cómo detectarlo antes:** comparar `select count(*) from pg_constraint where contype='f'` entre origen y destino, y sacar el diff de nombres con `comm`. Vale la pena ensayar el restore de día: el ensayo es el que te da la lista.
+
+### Migrar un servidor filial rompe la replicación lógica si no se desprenden los slots (2026-08-19)
+**Qué pasa:** el estado de replicación lógica (replication origins / LSN) **no sobrevive un dump/restore**. Recrear las subs "desde ahora" con `copy_data=false` pierde en silencio lo que central cambió en el medio; con `copy_data=true` se recopian tablas enteras.
+
+**Por qué se puede evitar:** los slots viven en el extremo **opuesto** al que se migra, y ahí sí sobreviven. Los slots que alimentan a la filial están en central.
+
+**Receta:**
+1. En la filial vieja, antes de borrar sus subs: `ALTER SUBSCRIPTION x SET (slot_name = NONE)` y **recién después** `DROP SUBSCRIPTION`. Sin ese paso el drop borra el slot en central y se pierde el punto de continuidad.
+2. En la filial nueva: `CREATE SUBSCRIPTION ... WITH (create_slot=false, slot_name='<el mismo>', copy_data=false)` → continúa exactamente en el LSN donde quedó.
+3. Para el sentido filial→central (ese slot sí se pierde con la máquina): recrear la sub en central con `copy_data=false`, **antes** de arrancar la app en la nueva. Si la app arranca primero, esas ventas no se replican nunca.
+
+### Recrear una suscripción pierde `origin = none` y abre un eco de replicación (2026-08-19)
+**Qué pasa:** en la replicación bidireccional de FRC (la filial publica a central *y* central publica a la filial), un `UPDATE` hecho en central llega a la filial, la filial lo republica a central, y esa respuesta **pisa cambios posteriores**. Visto en vivo durante el cutover de filial 1: una reversión aplicada en central quedó sobrescrita por el eco del valor anterior que venía en camino desde la filial.
+
+**Por qué:** las suscripciones del ecosistema están creadas con `origin = none`, que hace que el suscriptor **ignore los cambios que no se originaron localmente en el publicador**. Un `CREATE SUBSCRIPTION` sin esa opción queda en `origin = any` (el default) y el eco aparece. Al migrar un servidor de filial hay que recrear las suscripciones, y es fácil perder la opción porque **no se ve en `\dRs` ni en el nombre**.
+
+**Cómo detectarlo:**
+```sql
+select subname, suborigin from pg_subscription order by 1;   -- en central Y en la filial
+```
+Todas las filiales sanas dicen `none`. Si una dice `any`, es la que va a hacer eco.
+
+**Fix:**
+```sql
+ALTER SUBSCRIPTION <sub> SET (origin = none);   -- en los dos extremos
+```
+**Antes de recrear cualquier suscripción, mirar cómo está configurada la de otra filial** — es la referencia viva de cómo debe quedar.
+
+### No insertar a mano en tablas que se replican desde central
+**Qué pasa:** un `INSERT` de prueba en la filial sobre una tabla que central publica (ej. `configuraciones.replication_test`) toma un id de la secuencia **local**, que la replicación lógica **no mantiene sincronizada**. Cuando central inserta su propia fila con ese mismo id, el worker de la suscripción falla con `llave duplicada viola restricción de unicidad` y **entra en bucle de reintento, bloqueando toda esa suscripción** (no solo esa tabla).
+
+**Síntoma:** `pg_stat_subscription` muestra la sub sin `received_lsn` y `pg_stat_subscription_stats.apply_error_count` creciendo. El error concreto está en el journal del servicio de PostgreSQL, no siempre en el archivo de log:
+```bash
+sudo journalctl -u postgresql-16 --since '-20min' | grep -iE 'error|replication'
+```
+**Fix:** borrar la fila conflictiva en la filial y el worker se destraba solo en segundos.
+
+**Para probar replicación sin este riesgo:** modificar una fila **existente** y revertirla, en vez de insertar filas nuevas.
+
+### La app filial lee las imágenes de `/home/franco/FRC`, no del `user.home` configurado
+**Qué pasa:** tras migrar un servidor filial, la app arranca bien pero tira `javax.imageio.IIOException: Can't read input file!` en cada operación que involucra una imagen (productos, logo del ticket).
+
+**Por qué:** `application.properties` del filial define `user.home=/opt/frc-filial`, y uno asume que las imágenes van ahí. Pero el código resuelve `${user.home}` y **en Spring Boot las propiedades de sistema de la JVM tienen precedencia sobre `application.properties`** — así que gana el `user.home` real del proceso: `/home/franco`. El árbol vivo es **`/home/franco/FRC/resources/images/`** (~1.8 GB, >11.000 archivos en filial 1); el `/opt/frc-filial/FRC` que se ve en el layout es otro, mucho más chico, y copiar solo ese no alcanza.
+
+**Al migrar, copiar también:**
+```bash
+rsync -a /home/franco/FRC/resources franco@<nuevo>:/home/franco/FRC/
+```
+1.8 GB tarda ~17 s por LAN gigabit. Verificar después que no queden `IIOException` nuevas en `journalctl -u frc.service`.
+
+### Fedora 44 ya no empaqueta JDK 17 — usar Temurin
+**Qué pasa:** `dnf install java-17-openjdk-headless` falla con "No coincide para argumento" en Fedora 44; el repo solo tiene java-25. El JAR del filial es Spring Boot **2.1.15** (`Build-Jdk-Spec: 11`) y con Java 25 no arranca.
+
+**Fix:** repo Adoptium (`baseurl=https://packages.adoptium.net/artifactory/rpm/fedora/41/x86_64` — la 41 sirve, no hay path para 44) → `dnf install temurin-17-jdk`, que instala en `/usr/lib/jvm/temurin-17-jdk`. Acordarse de apuntar ahí el `ExecStart` del unit.
+
+### SSH anidado con heredocs: escribí un script con guard, no comandos anidados
+**Qué pasa:** para llegar a una máquina detrás de otra es tentador anidar `ssh A "ssh B \"cmd\""`. Con heredocs adentro el quoting se rompe **en silencio** y el comando se ejecuta en el host equivocado. Pasó el 2026-08-19: un `tee /etc/systemd/system/frc.service` destinado al servidor nuevo se escribió en el servidor **productivo**, dejándolo con un `ExecStart` a un Java inexistente. No se notó al momento porque el proceso ya corriendo no se ve afectado — habría fallado en el siguiente restart (y `check-update.sh` reinicia cada 15 min).
+
+**Fix durable:** escribir el script en un archivo, copiarlo con `scp`, y ejecutarlo con `bash /tmp/script.sh`. Y ponerle un **guard de identidad** en la primera línea:
+```bash
+[ "$(ip -4 addr show enp46s0 2>/dev/null | grep -c '192.168.0.104')" = "1" ] || { echo "ABORTA: host equivocado"; exit 1; }
+```
+Mejor aún: enrolar la máquina destino en el tailnet y llegar directo, sin salto.
+
+### Impresoras POS-58 clon comparten serial → `usb://` ambiguo con dos enchufadas (2026-08-19)
+**Qué pasa:** las térmicas POS-58 baratas reportan todas `serial=2022123456`. Mientras hay una sola por máquina, `usb://Printer/POS-58?serial=2022123456` funciona. Al juntar dos en un mismo host (por ejemplo al consolidar servidores), las dos URIs son idénticas y CUPS no puede distinguirlas.
+
+> 🔥 **Lo que NO sirve: `file:///dev/...` en Fedora 44.** Se probó el 2026-08-19 y **dejó sin imprimir a una PC de farmacia durante ~1 hora, en horario de atención**. Fedora 44 ya no empaqueta `/usr/lib/cups/backend/file` y **ningún paquete lo provee** (`dnf provides '*/cups/backend/file'` no devuelve nada). Sin backend, CUPS acepta el trabajo, lo marca completado y **lo descarta sin ningún error**. En Fedora 38 sí existe, así que el mecanismo parece razonable si uno viene de ahí. Verificar el backend antes de diseñar nada encima:
+> ```bash
+> ls /usr/lib/cups/backend/     # ¿está el que vas a usar?
+> ```
+
+**Cómo saber si una impresión salió de verdad — con cuidado:** que `lpstat -o` quede vacío **no prueba nada** (un trabajo descartado también desaparece). El contador del journal ayuda, pero **`total 0` NO significa siempre que se descartó**:
+```bash
+sudo journalctl -u cups --since '-2min' --no-pager | grep total
+```
+- En colas `usb://` e `ipp://`, el backend cuenta páginas → `total 1` = imprimió, `total 0` = sospechoso.
+- En colas **`smb://` el backend no lleva contabilidad y SIEMPRE registra `total 0`**, imprima o no. Verificado contra el histórico de filial 1: sus 7 colas SMB registran `total 0` desde siempre, operando normal.
+- Un **backend propio** tampoco cuenta salvo que emita `echo "PAGE: 1 1" >&2`.
+
+Señal confiable e independiente del backend: **trabajos atascados en `lpstat -o`** (con `printer-error-policy=retry-current-job` una falla real deja el trabajo encolado) y errores explícitos (`unable to`, `failed`, `not responding`) en el journal de cups. El papel sigue siendo la única prueba definitiva.
+
+**Alternativas reales cuando hay serial duplicado:** (a) backend propio en `/usr/lib/cups/backend/<nombre>` (root:root `0700`) que vuelque stdin al `/dev`, validado con una cola de test antes de usarlo; (b) no juntar las dos impresoras en el mismo host — dejar una colgada de una PC y compartirla por SMB. El anclaje udev por puerto físico sirve igual para ambas:
+```bash
+udevadm info -a -n /dev/usb/lp0 | grep -m1 -E 'KERNELS=="[0-9]+-[0-9]'   # ej. 3-4
+# /etc/udev/rules.d/99-frc-pos.rules
+SUBSYSTEM=="usbmisc", KERNELS=="3-4", SYMLINK+="pos-ticket11"
+```
+```bash
+sudo udevadm control --reload-rules && sudo udevadm trigger --subsystem-match=usbmisc
+sudo lpadmin -p ticket11 -v file:///dev/pos-ticket11 -E -o printer-is-shared=true
+```
+**Requisito que no es obvio:** CUPS **no imprime a un `/dev` sin `FileDevice Yes`** en `/etc/cups/cups-files.conf` (default `No`, y el archivo es `root:lp 0640` → todo con sudo). Sin eso el trabajo se acepta y se descarta en silencio.
+
+**Contra:** la regla se ancla al puerto, no al aparato. Si alguien cambia de puerto, las impresoras se intercambian. Etiquetar los puertos físicamente.
+
+### Portar impresoras CUPS entre servidores: es copiable, salvo lo físico
+**Qué se porta solo:** en las filiales FRC **ninguna cola usa PPD** (`/etc/cups/ppd/` vacío — todas raw ESC/POS), así que no hace falta instalar drivers en el destino. Las colas `smb://` llevan las credenciales de Windows embebidas en el `DeviceURI` (`smb://user:pass@host/share`), así que copiarlas porta también el acceso.
+
+**Receta segura** (mergea en vez de pisar, y no expone las passwords): generar `lpadmin` desde `/etc/cups/printers.conf` del origen con `awk`, escribir el script a un archivo `600`, `scp`, ejecutar y borrar. Copiar `printers.conf` entero **pisa** las colas que el destino ya tenía.
+
+**Verificar sin gastar papel:** `smbclient //host/share -U user%pass -c quit` valida alcance y credenciales sin mandar un trabajo. Requiere `samba-client` en el destino (trae el backend `smb` de CUPS).
+
+**Lo que no se porta:** las `usb://` — el aparato hay que mudarlo. Y las `ipp://` que apunten al host destino se vuelven auto-referenciales: repuntarlas al dispositivo local.
+
 ### Sudoers NOPASSWD puede quedar oculto por regla genérica anterior
 **Qué pasa:** `/etc/sudoers.d/franco-frc` tiene `NOPASSWD: /usr/bin/systemctl restart frc.service`, pero `sudo -n` sigue pidiendo password. `sudo -n -ll` muestra que franco también tiene `ALL=(ALL) ALL` desde `/etc/sudoers`.
 
@@ -608,3 +721,34 @@ Detectado en bodega filial 5 (2026-05-05): config migrado sin campo `updateChann
 **Qué pasa:** al bajar `venta_item` a una filial, la FK a `productos.presentacion` falla porque el `presentacion_id` no existe **ni en central ni en la filial** (farmacia suc 1, presentación 5191: central tiene 3 venta_item apuntándola, la presentación no existe en ningún nodo). No es "falta bajar un padre de catálogo" — es un dato corrupto en el origen (venta con ítem que referencia catálogo inexistente; la FK de central lo permitió antes de existir, o se borró la presentación sin cascada).
 
 **Fix operativo:** excluir del backfill las `venta_item` cuyo `presentacion_id` no exista en central (`... OR EXISTS (SELECT 1 FROM productos.presentacion p WHERE p.id=vi.presentacion_id)`), cargar el resto, reportar las corruptas aparte. No forzar una presentación falsa.
+
+---
+
+## Desarrollo local (descubiertos 2026-08-19)
+
+### El header de auth del central es `Token `, no `Bearer `
+**Qué pasa:** probar la API GraphQL con `curl -H "Authorization: Bearer <jwt>"` devuelve **401** aunque el token sea válido y recién emitido.
+
+**Por qué:** `security/JwtAuthenticationTokenFilter.java` exige literalmente `header.startsWith("Token ")` y hace `substring(6)`. Cualquier otro prefijo cae en `InsufficientAuthenticationException`.
+
+**Fix:** `-H "Authorization: Token <jwt>"`. El token se saca con `POST /login` mandando `{"nickname": ..., "password": ...}` (credenciales de dev en `frc-comercial/dev_user_cred.txt`, nunca tipearlas ni volcarlas a chat).
+
+### `tsc --noEmit` NO sirve como gate de tipos en el desktop
+**Qué pasa:** `npx tsc --noEmit -p tsconfig.json` en `frc-comercial/desktop` devuelve solo errores de `node_modules` y **cero** errores del código propio — incluso con un error de tipos deliberado (`const x: number = 'boom'`). Da falsa sensación de verificación.
+
+**Por qué:** el repo tiene TypeScript **4.8.4**, que no parsea la sintaxis moderna de algunos `.d.ts` instalados (`const` type parameters en `call-bind-apply-helpers`). Ante errores **sintácticos** en el programa, `tsc` reporta solo esos y **omite el chequeo semántico completo**. `skipLibCheck` no ayuda: suprime errores de tipos en libs, no de sintaxis.
+
+**Fix:** el único gate real es **`npm run check`** (AOT). No existe `tsconfig.app.json` en este repo. Un `ng build -c web` también type-checkea, pero tarda parecido y compite por RAM con cualquier `ng serve` que esté corriendo.
+
+### Spring DevTools re-aplica Flyway en cada `mvnw compile` — cuidado al corregir una migración recién escrita
+**Qué pasa:** se escribe una migración nueva, se corre `./mvnw compile` para verificar que compila, y **Flyway la aplica sola** contra la DB local — sin reiniciar el proceso Java a mano. Si después se corrige el archivo (typo, tipo de columna), el checksum ya no coincide con el registrado y el próximo arranque falla la validación.
+
+**Por qué:** DevTools reinicia el contexto de Spring al detectar cambios en `target/classes`, y `mvnw compile` copia ahí los `.sql` de `src/main/resources/db/migration`. El proceso del sistema operativo sigue siendo el mismo (`ps` muestra la fecha de arranque vieja), así que parece que no se reinició.
+
+**Fix:** si hay que corregir una migración **ya aplicada localmente**, borrar su fila y dejar que se re-aplique:
+```sql
+delete from flyway_schema_history where version = '200.5';
+```
+Funciona solo si la migración es idempotente (`IF NOT EXISTS` en todo). Si no lo es, revertir a mano lo que aplicó antes de borrar la fila. **La regla del repo sigue siendo corregir el mismo archivo, no crear uno nuevo** — esto es solo cómo desatascar el checksum local.
+
+> Pista para diagnosticar: `flyway_schema_history.installed_on` con hora de hoy y `ps -o lstart=` del proceso Java con fecha de días atrás = fue DevTools.
