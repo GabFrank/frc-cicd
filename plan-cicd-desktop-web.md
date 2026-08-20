@@ -76,15 +76,15 @@ plan:
 | Canal | Proyecto Pages | Puertas | API por defecto |
 |---|---|---|---|
 | alpha | `frc-desk-alpha` | `alpha.desk.frcsuite.com` | `alpha-api` |
-| beta | `frc-desk-beta` | `beta.desk.frcsuite.com` | `farmacia-api` |
-| prod | `frc-desk-prod` | `farmacia.desk`, `bodega.desk` | según el hostname |
+| beta | `frc-desk-beta` | **`farmacia.desk`** + `beta.desk` (ensayo) | `farmacia-api` |
+| prod | `frc-desk-prod` | `bodega.desk` | `bodega-api` |
 
 > ⚠️ **No existe un canal beta como tal en este producto: farmacia *es* el beta.**
-> El central de farmacia corre el canal beta (`4.7.0-beta.2`) y el de bodega el
-> stable (`4.8.0`). O sea que `farmacia.desk` ya cumple el rol de beta contra un
-> backend beta, y `beta.desk` queda estacionada con el marcador de posición hasta
-> que se decida si tiene sentido. La discusión de si farmacia debería ser su
-> propio canal o seguir siendo el beta de facto es aparte de este plan.
+> El central de farmacia corre la serie beta y el de bodega la stable. Esta nota
+> señalaba la contradicción; **el 2026-08-20 se resolvió moviendo `farmacia.desk`
+> al proyecto `frc-desk-beta`**, para que la puerta siga a su canal y el cliente
+> quede en la misma serie que su backend. `beta.desk` queda como ensayo interno.
+> Modelo completo en `guia-desarrollo-cicd.md` → «beta y farmacia son la misma cosa».
 
 ---
 
