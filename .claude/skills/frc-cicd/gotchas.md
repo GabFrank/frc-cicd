@@ -415,9 +415,11 @@ El head es una rama descartable, y "Update branch" no puede tocar `master`.
 
 - `master` y `develop`: `enforce_admins=true` en los cinco.
 - `release/beta`: PR obligatorio (0 revisiones), `enforce_admins=true`, sin force-push ni borrado, y los mismos checks que exige `master` (`build`; en desktop los dos: `build (ubuntu-latest)` y `build (windows-latest)`).
-- **`frc-mobile-pwa` todavía no tiene la rama `release/beta` creada**, así que su protección se hizo con un **ruleset por patrón** (`refs/heads/release/*`, id `21101348`) que aplica en cuanto la rama exista. Se dejó **sin checks requeridos** porque no se pudo verificar que su CI se dispare en PRs contra `release/*` — agregarlos tras el primer PR.
+- **`frc-mobile-pwa` todavía no tiene la rama `release/beta` creada**, así que su protección se hizo con un **ruleset por patrón** (`refs/heads/release/*`, id `21101348`) que aplica en cuanto la rama exista: `deletion`, `non_fast_forward`, `pull_request` (0 revisiones) y el check `build`.
 
-**Antes de exigir checks en una rama, confirmar que el CI se dispara para PRs contra ella** (`on: pull_request: branches: [...]`). Si no se dispara, el check nunca reporta y los merges quedan bloqueados para siempre. Los cuatro repos originales usan `[develop, release/*, main, master]`, por eso ahí fue seguro.
+**Antes de exigir checks en una rama, confirmar que el CI se dispara para PRs contra ella** (`on: pull_request: branches: [...]`). Si no se dispara, el check nunca reporta y los merges quedan bloqueados para siempre. Los cinco repos lo cubren: los cuatro originales con `[develop, release/*, main, master]` y la PWA con `[develop, 'release/*', master]`.
+
+> **Trampa al auditar la PWA:** sus workflows **solo existen en `develop`, no en `master`** — el CI/CD todavía no se promovió. Un `gh api .../contents/.github/workflows` contra la rama por defecto devuelve **404 y parece falta de permisos**; el repo es **público** (el `(privado)` del CLAUDE.md raíz y el comentario "este repo es privado y los minutos se facturan" dentro de su `ci.yml` están desactualizados). Para leerlo: `curl raw.githubusercontent.com/.../develop/.github/workflows/ci.yml`, o `gh api .../actions/workflows` que sí lista los paths.
 
 **Y verificar que `semantic-release` no empuje commits a la rama** antes de activar `enforce_admins`: los cuatro repos usan solo `commit-analyzer` + `release-notes-generator` + `@semantic-release/github`, que crean tags y releases (no bloqueados por protección de rama), no commits.
 
