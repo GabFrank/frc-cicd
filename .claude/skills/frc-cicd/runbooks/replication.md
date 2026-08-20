@@ -256,3 +256,13 @@ psql ... -c "
 > **Gotcha de `max(version)` en Flyway:** `flyway_schema_history.version` es **texto**,
 > así que `max(version)` devuelve `'99.5'` en vez de `'197.5'`. Para saber hasta dónde
 > llegó una migración, ordenar por `installed_rank DESC`, no por `version`.
+
+## ⚠️ `origin = none` en todas las suscripciones
+
+La replicación es **bidireccional** (la filial publica a central y central publica a la filial). Todas las suscripciones del ecosistema llevan `origin = none`, que hace que el suscriptor ignore los cambios que no se originaron localmente en el publicador. **Sin esa opción hay eco**: lo que central manda a la filial vuelve republicado y pisa cambios posteriores.
+
+```sql
+select subname, suborigin from pg_subscription order by 1;   -- en central Y en cada filial: todas 'none'
+```
+
+Un `CREATE SUBSCRIPTION` sin la opción queda en `origin = any` (el default) — pasó al recrear las subs en la migración de filial 1 el 2026-08-20, y se vio en vivo cómo una reversión quedaba pisada por el eco. Se corrige con `ALTER SUBSCRIPTION <sub> SET (origin = none)` en **los dos extremos**.
