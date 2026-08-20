@@ -78,7 +78,7 @@ Organizations, Identity Providers and Groups`): eso se hace por panel.
 |---|---|
 | Zona `frcsuite.com` | Registrada 2026-08-14. APIs del central en **nube gris** (LE en el origen); puertas de la PWA y el túnel en **naranja** |
 | Pages | `frc-pwa-alpha`, `frc-pwa-beta`, `frc-pwa-prod`. Deploy por `wrangler pages deploy` desde Actions |
-| Puertas | `alpha.app` · `beta.app` · `farmacia.app` · `bodega.app` — las dos últimas al mismo proyecto `prod` |
+| Puertas | `alpha.app` → `frc-pwa-alpha` · **`farmacia.app` → `frc-pwa-beta`** · `bodega.app` → `frc-pwa-prod` · `beta.app` → `frc-pwa-beta` (ensayo interno). Igual para `*.desk` con los proyectos `frc-desk-*`. **Re-mapeado el 2026-08-20**: `farmacia.*` colgaba de `prod` y servía builds estables a una red cuyo central corre beta |
 | Túnel | `frc-alpha-mauro` → mauro `:8083`. Ingress gestionado **en la nube**, no en un `config.yml` |
 | Zero Trust | Organización **`frcsuite`** (plan Free). **Sin aplicaciones**: Access se probó sobre `alpha.app` y se quitó — rompe el service worker (ver gotcha) |
 

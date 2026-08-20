@@ -227,8 +227,10 @@ APIs — planas, dos niveles a propósito
 | Canal | Proyecto Pages | Puertas | API por defecto |
 |---|---|---|---|
 | alpha | `frc-pwa-alpha` | `alpha.app` | `alpha-api` |
-| beta | `frc-pwa-beta` | `beta.app` | `farmacia-api` |
-| prod | `frc-pwa-prod` | `farmacia.app` y `bodega.app` | según el hostname |
+| beta | `frc-pwa-beta` | **`farmacia.app`** + `beta.app` (ensayo) | `farmacia-api` |
+| prod | `frc-pwa-prod` | `bodega.app` | `bodega-api` |
+
+> ⚠️ **`beta` es la red de farmacia, no un laboratorio.** Corregido el 2026-08-20: `farmacia.app` colgaba del proyecto `prod` y habría servido builds estables a una red cuyo central corre la serie beta — el cliente detrás de su propio backend. Ahora `farmacia.app` sale del proyecto beta y `bodega.app` queda sola en `prod`. La puerta `beta.app` sigue existiendo como ensayo interno.
 
 > ⚠️ **Las APIs van a dos niveles a propósito.** El certificado Universal de
 > Cloudflare cubre `frcsuite.com` y `*.frcsuite.com`, **no** un tercer nivel:

@@ -40,6 +40,7 @@ Esta skill concentra lo que aprendí operando el sistema FRC Sistemas Informáti
 
 ## Convenciones transversales del proyecto
 
+- **⚠️ «beta» ES la red de farmacia, y es producción.** No hay canal beta de laboratorio. Los canales reales son **`alpha`** (laboratorio en mauro), **`farmacia`** (serie beta: central `:8082` + sus 6 filiales + cajas) y **`bodega`** (serie stable: central `:8081` + 17 filiales). Promover a `release/beta` publica a una farmacia que factura. Y **cliente y backend van juntos por canal**: si el central de farmacia corre beta, su desktop y su PWA corren beta. Las puertas de Cloudflare siguen ese mapa (`farmacia.*` → proyecto beta desde 2026-08-20); `beta.*` es ensayo interno, no un canal del producto.
 - **Idioma del dominio:** español (entidades, columnas, logs de producto, UI). Identificadores de código en inglés, commits en inglés con prefijos convencionales.
 - **Branches en los 4 repos:** `master` (no `main`) + `release/beta` (long-lived, no `release/x.y.z`) + `develop`. Todas protegidas con `enforce_admins=true`.
 - **Merge strategy:** `release/beta → master` con **merge commit**, NO squash. Squash rompe cálculos de semantic-release. En los otros PRs cualquier estrategia razonable sirve pero por defecto **merge commit**.

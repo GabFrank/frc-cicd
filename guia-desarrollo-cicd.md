@@ -47,9 +47,25 @@ master              ← produccion (protegida, solo merge via PR)
 
 | Rama | Canal | Quien la usa |
 |---|---|---|
-| `develop` | alpha | Equipo interno, laboratorio |
-| `release/beta` | beta | Filial piloto, testers |
-| `master` | production | Todas las empresas |
+| `develop` | alpha | Equipo interno, laboratorio (mauro) |
+| `release/beta` | beta | **Toda la red de farmacia — produccion real**, no un piloto |
+| `master` | stable | **Toda la red de bodega — produccion real** |
+
+> ### ⚠️ «beta» y «farmacia» son la misma cosa
+>
+> **No existe un canal beta de laboratorio: `beta` ES la red de farmacia, y está en producción real.** El central de farmacia (`:8082`) corre la serie beta y todas sus filiales y cajas van detrás; el central de bodega (`:8081`) corre la estable. Los canales reales del producto son **`alpha`, `farmacia` y `bodega`**.
+>
+> | Rama | Serie | Quién la recibe | Es producción |
+> |---|---|---|---|
+> | `develop` | alpha | Laboratorio en `mauro` (central + filial alpha) | No |
+> | `release/beta` | beta | **Toda la red de farmacia**: central `:8082`, sus 6 filiales, sus cajas | **Sí** |
+> | `master` | stable | **Toda la red de bodega**: central `:8081` y sus 17 filiales | **Sí** |
+>
+> Consecuencias que no son obvias:
+> - Promover a `release/beta` **no es "soltar a testers"**: es publicar a una farmacia que factura. Merece el mismo cuidado que `master`.
+> - **Cliente y backend se promueven juntos por canal.** Si el central de farmacia corre beta, el desktop y la PWA de farmacia tienen que correr beta también; servirle builds estables la deja detrás de su propio backend.
+> - La puerta `beta.*` de Cloudflare es un **ensayo interno**, no un canal del producto. Las puertas que usan personas son `alpha.*`, `farmacia.*` y `bodega.*`.
+
 
 ### Reglas
 
@@ -460,9 +476,11 @@ El canal se configura en **Configuracion → Canal de actualizacion**. Opciones:
 | Canal | Que recibe | Quien lo usa |
 |---|---|---|
 | `alpha` | Cada merge a `develop` con `feat:` o `fix:` | Equipo interno, testing |
-| `beta` | Cada merge a `release/beta` | Filial piloto |
-| `stable` | Cada merge a `master` | Produccion |
+| `beta` | Cada merge a `release/beta` | **Las cajas de la red de farmacia** (produccion) |
+| `stable` | Cada merge a `master` | **Las cajas de la red de bodega** (produccion) |
 | `dev` | Nada — auto-update desactivado | Desarrollo local |
+
+> Elegir `beta` en una caja **no la pone en modo prueba**: la pone en la serie que usa toda la farmacia. Ver «beta y farmacia son la misma cosa» mas arriba.
 
 ### Detalles tecnicos relevantes
 
