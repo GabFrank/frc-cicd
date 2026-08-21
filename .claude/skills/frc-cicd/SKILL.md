@@ -30,6 +30,7 @@ Esta skill concentra lo que aprendí operando el sistema FRC Sistemas Informáti
 | Lecciones aprendidas a golpes (leer antes de cada sesión) | [gotchas.md](gotchas.md) |
 | Cómo funciona `check-update.sh` end-to-end | [runbooks/check-update-flow.md](runbooks/check-update-flow.md) |
 | **Filial pegada en versión vieja — diagnóstico (4 modos de falla)** | [runbooks/stuck-filial-diagnosis.md](runbooks/stuck-filial-diagnosis.md) |
+| **Filial nómade (Suc. Fiesta) — bajar y reincorporar la replicación** | [runbooks/filial-nomade.md](runbooks/filial-nomade.md) |
 | **Migrar el servidor de una filial a otra máquina** | `frc-cicd/runbook-cutover-filial1.md` en el repo (ejecutado 2026-08-20) + los gotchas de migración en [gotchas.md](gotchas.md) |
 | Sudoers NOPASSWD — patrones y fixes | [runbooks/sudoers-patterns.md](runbooks/sudoers-patterns.md) |
 | Override `sucursalId` vía application.properties | [runbooks/application-properties-overlay.md](runbooks/application-properties-overlay.md) |
