@@ -454,6 +454,94 @@ done   # OK = 2**14 (16384), MAL = 2**12 (4096). arm64-v8a es el ABI que importa
 
 ## Replicación PostgreSQL
 
+### Una migración de central que toca schema replicado rompe TODAS las filiales (enum drift)
+**Qué pasa (2026-08-20, filial 1 farmacia):** se despliega central, y horas después una filial deja
+de replicar en **las dos direcciones**. El apply worker de bajada muere cada 5s con:
+```
+ERROR: la sintaxis de entrada no es válida para el enum configuraciones.tipo_dispositivo: «WEB_MOBILE»
+```
+
+**Por qué:** central aplicó `V192.5__fix_tipo_dispositivo_web_enum.sql`, que agrega los labels
+`WEB` y `WEB_MOBILE` al enum (el `V0` los define pegoteados como un único label roto,
+`WEBWEB_MOBILE`). **Esa migración no tenía espejo en el repo filial**, y la replicación lógica
+**no propaga DDL**. En cuanto alguien inicia sesión desde la PWA o el desktop servido como web,
+central inserta `configuraciones.inicio_sesion` con el label nuevo y lo publica a la filial, que
+no lo conoce.
+
+Es el mismo patrón que ya había motivado la `V89.5` del filial (columnas). **Regla:** toda
+migración de central sobre una tabla publicada a filiales necesita su espejo en el repo filial,
+en el mismo release. Vale la pena un check de CI que compare enums y columnas de las tablas
+publicadas entre los dos repos.
+
+**El efecto dominó es lo que más confunde.** Con la bajada muerta, la filial deja de ver los
+`id` que central va creando en `inicio_sesion`; su `findMaxId` se atrasa y termina generando
+una PK `(id, sucursal_id)` que central ya usó → `duplicate key` → **también se corta la subida**.
+Una sola causa raíz rompe los dos sentidos, con dos errores distintos y a horas distintas.
+Al diagnosticar, no tratarlos como incidentes separados: arreglá el enum primero y mirá qué
+queda.
+
+**Por qué central empezó a escribir `inicio_sesion` con `sucursal_id` de filial:** los clientes
+web nuevos (mobile-pwa y desktop web) reportan la sucursal real. Antes central solo escribía
+`sucursal_id=0` (el bug de issue filial #77). O sea que **esto va a repetirse en cada filial a
+medida que se use la PWA**, porque los dos nodos asignan `id` con `max+1` sobre el mismo espacio.
+
+**Fix operativo (el que funcionó, sin perder datos):**
+1. `ALTER TYPE ... ADD VALUE IF NOT EXISTS 'WEB'` / `'WEB_MOBILE'` en la filial. Aditivo,
+   idempotente, no requiere reiniciar nada. La bajada arranca sola en 5s.
+2. Las filas con PK duplicada que quedaron de la ventana ciega **no se resuelven solas** —
+   arreglar el enum corta la hemorragia pero no deshace lo ya escrito en las dos puntas.
+   Saltearlas con `ALTER SUBSCRIPTION <sub> SKIP (lsn = '<finished at>')`, leyendo el LSN del
+   `CONTEXT: ... finished at X` del log. Una por transacción, en **los dos** extremos.
+3. Verificar: los tres slots de la filial en decenas de bytes y `worker`/`pid` no nulo.
+
+**Preferir `SKIP` a borrar filas.** No pierde datos (deja los nodos divergentes en esa PK, que
+en una tabla de auditoría sin FKs es inocuo) y no corre el riesgo del `DELETE`: `filial<N>_pub`
+tiene `pubdelete=t`, así que un borrado en la filial **se replica y borra la fila legítima de
+central**. Si aun así hay que borrar, marcar la sesión con
+`pg_replication_origin_session_setup()` (ver el gotcha de `session_replication_role` más abajo).
+
+**Trampa de tiempos al diagnosticar:** la filial nueva guarda `creado_en` en UTC y central en
+`-03`. Dos filas del mismo instante se ven con 3 horas de diferencia y parece corrupción de
+reloj. Comparar el offset antes de concluir nada.
+
+**Ojo con el reintento de 5 minutos.** La sub de subida reintenta cada 5 min (la de bajada cada
+5s). Tras un `SKIP`, `worker=f` durante varios minutos **no significa que falló** — hay que
+esperar el ciclo. No encadenar skips a ciegas.
+
+### Llegar al PostgreSQL de una filial: no hay un solo camino
+Barrido de las 18 filiales de bodega (2026-08-21). Un script que asume un único método falla en
+la mitad de la flota:
+
+| Caso | Cómo entrar |
+|---|---|
+| PG nativo (farmacia 1 y 4) | `psql -p 5551 -d general` por socket, peer auth como `franco` |
+| PG en Docker, rol `postgres` | `sudo docker exec -u postgres postgres psql -d general` |
+| PG en Docker, **sin** rol `postgres` (bodega 6) | `sudo docker exec postgres psql -U franco -d general` |
+| **Windows** (bodega 4) | Docker Desktop, contenedor **`frc-server`** (no `postgres`), y `psql` **pide password**: `docker exec -e PGPASSWORD=$p frc-server psql -U franco -d general` |
+
+Notas que cuestan tiempo si no se saben:
+- En bodega la mayoría corre **PG en Docker**, no nativo. `psql -p 5551` falla con
+  `no existe el fichero /var/run/postgresql/.s.PGSQL.5551` — no significa que PG esté caído.
+- El nombre del contenedor **no es siempre `postgres`**: en la Windows es `frc-server`.
+- La Windows **no tiene PostgreSQL instalado** (`C:\Program Files\PostgreSQL` no existe, ningún
+  servicio `postgres`). Para ubicar el motor: `netstat -ano | findstr :5551` y `tasklist`.
+  El password sale de `C:\frc-filial\.env` (`SPRING_DATASOURCE_PASSWORD`) — leerlo **en el
+  propio host** y pasarlo por `-e PGPASSWORD`, nunca traerlo al chat.
+- Encadenar `psql ... 2>/dev/null || sudo docker exec ...` cubre los casos Linux de una pasada.
+
+### `psql -c "stmt1; stmt2"` corre TODO en una sola transacción
+**Qué pasa:** se manda un `-c` con dos `ALTER TYPE ... ADD VALUE` más un `select` de verificación,
+el `select` tiene un error de sintaxis, y **los `ALTER` tampoco quedan aplicados** — aunque psql
+haya impreso `ALTER TYPE`. La verificación posterior muestra el enum sin cambios y parece que el
+comando "no hizo nada".
+
+**Por qué:** un único `-c` con varias sentencias se envía como un solo query string y psql lo
+envuelve en una transacción implícita. Cualquier error aborta el conjunto entero.
+
+**Fix:** una sentencia por `-c` (`psql -c "..." -c "..." -c "..."`). Se ejecutan en
+transacciones separadas y un error no arrastra a las anteriores. Vale sobre todo cuando la
+última sentencia es la verificación: si va pegada, un typo tuyo revierte el fix real.
+
 ### El stream de replicación se corta pero ping y `select` pasan (camino ZeroTier)
 **Qué pasa:** una sub de subida (filial→central) entra en un ciclo eterno: el apply worker arranca, vive 60s sin recibir **ni un keepalive**, muere con `ERROR: terminating logical replication worker due to timeout`, y reintenta a los 5 min. Visto 2026-08-15 en `filial_farmacia_1_sub`; la sucursal quedó ~1h sin replicar.
 
@@ -752,3 +840,28 @@ delete from flyway_schema_history where version = '200.5';
 Funciona solo si la migración es idempotente (`IF NOT EXISTS` en todo). Si no lo es, revertir a mano lo que aplicó antes de borrar la fila. **La regla del repo sigue siendo corregir el mismo archivo, no crear uno nuevo** — esto es solo cómo desatascar el checksum local.
 
 > Pista para diagnosticar: `flyway_schema_history.installed_on` con hora de hoy y `ps -o lstart=` del proceso Java con fecha de días atrás = fue DevTools.
+
+## `ng build` del desktop termina pero el proceso no sale (2026-08-20)
+
+`npm run check` (y cualquier `ng build --configuration production`) **completa correctamente**
+—escribe `dist/`, imprime la tabla de bundles y el `Build at: ... Time: ...ms`— y después
+**se queda vivo en 0% de CPU indefinidamente**. No es un cuelgue.
+
+Consecuencias prácticas:
+
+- Se apilan procesos "fantasma" de builds viejos (encontramos uno de un día atrás). Ocupan
+  memoria y compiten con `ng serve`, que sí puede hacer fallar builds nuevos por OOM.
+- **No diagnosticar por CPU/RSS.** Un build terminado y uno colgado se ven igual. Lo que hay
+  que mirar es el log (`Build at:` / `Initial Total`) o el `dist/`.
+- **No pipear la salida a `tail`/`head`**: retienen todo hasta que el pipeline cierre, y como
+  el proceso no cierra, el archivo de salida queda en 0 bytes y parece que nunca arrancó.
+  Redirigir a un archivo: `npx ng build ... > build.log 2>&1`.
+
+Además: el script `"check"` del `package.json` **no lleva** el
+`NODE_OPTIONS=--max_old_space_size=8192` que sí tiene `"ng:serve"`. En una máquina cargada
+muere por falta de heap sin escribir una línea de error — o sea, el gate que el repo obliga a
+correr antes de pushear puede fallar en silencio. Correrlo así hasta que se arregle:
+
+```bash
+NODE_OPTIONS=--max_old_space_size=8192 npx ng build --configuration production --no-progress
+```

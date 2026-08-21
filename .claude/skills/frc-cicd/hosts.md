@@ -250,7 +250,21 @@ Nodos del tailnet que no son servidores: PCs desde donde se opera la flota. Todo
 
 ## Filiales bodega
 
-17 sucursales de Bodega en red `172.25.1.*` (misma subred que el central). Canal objetivo: **stable**. Central bodega productiva corre en `172.25.1.200:8081` (instancia stable, DB `bodega`, servicio `frc-bodega.service`, path legacy `/home/franco/bodega/FRC/frc-server/`, shared host con farmacia).
+**18 filiales bodega replicando** (verificado 2026-08-21 contra `pg_subscription` de la DB `bodega`,
+cluster **5552**: 18 subs, y las mismas 18 sucursales vendieron ese día), **más Suc. Fiesta (25)**,
+que es nómade y está desconectada a propósito. Red `172.25.1.*` (misma subred que el central).
+Canal objetivo: **stable**. Central bodega productiva corre en `172.25.1.200:8081` (instancia stable,
+DB `bodega`, servicio `frc-bodega.service`, path legacy `/home/franco/bodega/FRC/frc-server/`,
+shared host con farmacia).
+
+> ⚠️ **Este documento decía «17 sucursales» y la tabla listaba 18** — el número en prosa nunca se
+> actualizó. Contar las filas o `pg_subscription`, no la frase.
+>
+> ⚠️ **`empresarial.sucursal` lista 20 sucursales activas con `ip` no nula**, dos más que las 18 que
+> replican: **25 (SUC. FIESTA)**, la nómade, y **13 (DEPOSITO AQUARIO SDG, `172.25.1.13`)**, que tiene
+> IP configurada pero **no tiene suscripción** — nunca vendió. Es el desfase ya conocido entre
+> `empresarial.sucursal` y la conninfo real de las subs. Antes de actuar sobre una filial "por
+> número", confirmar contra `pg_subscription`.
 
 | sucursal_id | Filial | IP | OS | Puerto app | Notas |
 |---|---|---|---|---|---|
@@ -272,6 +286,24 @@ Nodos del tailnet que no son servidores: PCs desde donde se opera la flota. Todo
 | 22 | Suc. Canindeyu 2 | 172.25.1.22 | Linux | 8082 | |
 | 23 | Suc. Ruta 7 | 172.25.1.23 | Linux | 8082 | |
 | 24 | Suc. Km2 | 172.25.1.24 | Linux | 8082 | sucursal_id=24 coincide con el hardcoded del JAR legacy (`application.properties` embebido dice `sucursalId=24`) — para esta filial el overlay "no cambia nada" por casualidad, pero igual aplicarlo por consistencia |
+| 25 | **Suc. Fiesta** | `172.25.1.26` (⚠️ la IP **no** coincide con el id) | Linux (Fedora, hostname `fedora`) | 8082 | 🎪 **SUCURSAL NÓMADE — sin replicación por diseño.** Solo opera en eventos puntuales. Ver la nota abajo |
+
+> ### 🎪 Suc. Fiesta (sucursal_id 25) — nómade, sin replicación permanente
+>
+> Solo opera en eventos especiales, cada tanto. **Desde el 2026-08-21 no tiene replicación**: se
+> dropearon sus dos suscripciones a central y la de central hacia ella, con sus slots.
+> Decisión de Gabriel, y la correcta: una máquina dormida que conserva sus subs **ancla WAL en el
+> central productivo indefinidamente** — esta tenía **11 GB** retenidos desde el 2026-08-14, que
+> era el 99% del WAL del cluster bodega. Al soltarla el cluster pasó de 11 GB a 80 MB y el disco
+> de central de 48% a 41%.
+>
+> **Antes de cada evento hay que reincorporarla** — ver [runbooks/filial-nomade.md](runbooks/filial-nomade.md).
+> La reincorporación es la mitad riesgosa y **va antes de operar, no después**: mientras no
+> replique, todo lo que produzca queda varado en la máquina.
+>
+> Ojo con dos trampas de esta filial en particular: su **IP no coincide con el id** (`172.25.1.26`
+> para `sucursal_id=25`), y **no está en el `.env`** — por eso quedó fuera del barrido del enum
+> `tipo_dispositivo` del 2026-08-21 y sigue con el enum viejo.
 
 User SSH: `franco`, password default `franco` (credenciales en `.env`). Layout y servicios idénticos al modelo farmacia — se reutilizan los runbooks `runbook-migracion-filial-{linux,windows}-beta.md` sustituyendo `beta` → `stable`.
 
