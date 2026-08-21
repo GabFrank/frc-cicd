@@ -841,6 +841,32 @@ Funciona solo si la migración es idempotente (`IF NOT EXISTS` en todo). Si no l
 
 > Pista para diagnosticar: `flyway_schema_history.installed_on` con hora de hoy y `ps -o lstart=` del proceso Java con fecha de días atrás = fue DevTools.
 
+## El build local NO es el gate — lo es `gh pr checks` (2026-08-21)
+
+Hermano del gotcha de `ng build` de abajo, por el lado de Maven. Los dos comparten la
+misma trampa: **un build local que se comporta raro en esta máquina no dice nada sobre
+la salud del código.**
+
+**Qué pasa en central:** `./mvnw clean verify` tarda entre 2 y 10 minutos, y
+`ActaAdvertenciaJrxmlTest` mata la VM forked de surefire con
+
+```
+The forked VM terminated without properly saying goodbye. Process Exit Code: 0
+```
+
+**Por qué:** es **presión de memoria local**, no un defecto del código. Dos evidencias que lo
+confirman:
+
+- con `-DforkCount=0` los mismos tests pasan;
+- en CI ese mismo `clean verify` corre en **1m36s** y da verde.
+
+**Qué hacer:** no perseguir el fantasma. Antes de dar por roto un test que falla solo en
+local, mirar `gh pr checks <n>` — ese es el veredicto real. Y si hace falta correrlo en
+la máquina, `-DforkCount=0` evita el fork que se muere.
+
+> Aplica igual al desktop: `npm run check` completa y deja el proceso vivo (ver el gotcha
+> siguiente). En ambos casos el síntoma local engaña y el CI es la fuente de verdad.
+
 ## `ng build` del desktop termina pero el proceso no sale (2026-08-20)
 
 `npm run check` (y cualquier `ng build --configuration production`) **completa correctamente**
