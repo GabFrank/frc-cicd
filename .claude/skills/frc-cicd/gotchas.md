@@ -382,6 +382,49 @@ sed -i "s/version: '0.0.0'/version: '${SELLO}'/" src/environments/environment.we
 
 **Cómo verificarlo antes de mergear un back-merge así:** medir la divergencia (`git rev-list --count A..B` en los dos sentidos), listar los archivos tocados por ambos lados (`comm -12` de los dos `git diff --name-only` contra la base común) y hacer el merge de prueba en una rama descartable corriendo el build real. Si no hay solapamiento de archivos, el riesgo es semántico, no textual — y el build es lo único que lo descarta.
 
+### Un back-merge por PR deja `master` como head, y "Update branch" publica a producción (2026-08-19)
+**Qué pasa:** se abrió un PR de back-merge `master → develop` (head=`master`, base=`develop`), que es la forma natural de traer master hacia develop. Alguien usó el botón **"Update branch"** del PR y eso publicó un **release estable** que nunca pasó por `release/beta`.
+
+**Por qué:** "Update branch" mergea la **base dentro del head**. En un PR normal (`feature → develop`) eso es rutina inofensiva. En un back-merge el head **es `master`**, así que la operación mergea `develop` dentro de `master` y **escribe directo en master** — sin PR, sin review, sin pasar por beta. El `Release` de master se dispara con el push y publica el canal estable.
+
+**Cómo se reconoce en la historia:**
+- commit con `committer: GitHub` (se generó del lado del servidor, no por un push local),
+- mensaje `Merge branch 'develop' into master` (el merge de un PR diría `Merge pull request #N from ...`),
+- un `CI (pull_request)` con `headBranch=master` segundos después: el PR se resincronizó porque su head recibió un commit,
+- y el commit aparece asociado al PR de back-merge (`/commits/<sha>/pulls`).
+
+**Cómo evitarlo:** no hacer el back-merge con `master` como head. Crear una rama intermedia desde master y abrir el PR desde ahí:
+
+```bash
+git checkout -b chore/backmerge-master-develop origin/master
+gh pr create --base develop --head chore/backmerge-master-develop
+```
+
+El head es una rama descartable, y "Update branch" no puede tocar `master`.
+
+**Lo que dejó al descubierto — la protección real no era la documentada.** Verificado el 2026-08-19 en `desktop`: `enforce_admins=false`, `required_approving_review_count=0`, sin restricción de push directo. Con `enforce_admins=true` esa escritura habría sido rechazada.
+
+**✅ Corregido y auditado repo por repo el 2026-08-20.** La auditoría encontró dos huecos, no uno:
+
+| Repo | `master` / `develop` antes | `release/beta` antes |
+|---|---|---|
+| central · filial · mobile-pwa | ya `enforce_admins=true` | **sin protección** |
+| **desktop · mobile** | **`enforce_admins=false`** | **sin protección** |
+
+`release/beta` **no estaba protegida en ninguno de los cinco repos**, pese a ser la rama desde la que se promueve a producción. Estado actual, verificado:
+
+- `master` y `develop`: `enforce_admins=true` en los cinco.
+- `release/beta`: PR obligatorio (0 revisiones), `enforce_admins=true`, sin force-push ni borrado, y los mismos checks que exige `master` (`build`; en desktop los dos: `build (ubuntu-latest)` y `build (windows-latest)`).
+- **`frc-mobile-pwa` todavía no tiene la rama `release/beta` creada**, así que su protección se hizo con un **ruleset por patrón** (`refs/heads/release/*`, id `21101348`) que aplica en cuanto la rama exista: `deletion`, `non_fast_forward`, `pull_request` (0 revisiones) y el check `build`.
+
+**Antes de exigir checks en una rama, confirmar que el CI se dispara para PRs contra ella** (`on: pull_request: branches: [...]`). Si no se dispara, el check nunca reporta y los merges quedan bloqueados para siempre. Los cinco repos lo cubren: los cuatro originales con `[develop, release/*, main, master]` y la PWA con `[develop, 'release/*', master]`.
+
+> **Trampa al auditar la PWA:** sus workflows **solo existen en `develop`, no en `master`** — el CI/CD todavía no se promovió. Un `gh api .../contents/.github/workflows` contra la rama por defecto devuelve **404 y parece falta de permisos**; el repo es **público** (el `(privado)` del CLAUDE.md raíz y el comentario "este repo es privado y los minutos se facturan" dentro de su `ci.yml` están desactualizados). Para leerlo: `curl raw.githubusercontent.com/.../develop/.github/workflows/ci.yml`, o `gh api .../actions/workflows` que sí lista los paths.
+
+**Y verificar que `semantic-release` no empuje commits a la rama** antes de activar `enforce_admins`: los cuatro repos usan solo `commit-analyzer` + `release-notes-generator` + `@semantic-release/github`, que crean tags y releases (no bloqueados por protección de rama), no commits.
+
+**Daño colateral del episodio:** el estable quedó con un desktop que le pide al central operaciones que producción no tenía (`valesPendientes`, `pagarValesMixto`, `crearValeParaPago`, `desconfirmarTransferenciaItem`). Cliente y backend se promueven juntos o el cliente rompe funciones en producción.
+
 ## Mobile
 
 ### CapacitorUpdater line en `capacitor.config.ts` es código muerto
