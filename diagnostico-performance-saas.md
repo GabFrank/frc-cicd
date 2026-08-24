@@ -348,6 +348,17 @@ Procedimiento: `CREATE INDEX CONCURRENTLY` **a mano, por `psql`, en ventana noct
 19. Los que la Fase 0.6 demuestre que faltan realmente en el filial.
 20. **Nada de `pg_trgm` todavía** (§4.2).
 
+### Fase O — Observabilidad (transversal, empieza en paralelo a la Fase 1)
+
+Para que la próxima vez el sistema avise solo, en vez de enterarnos por la queja de un cliente.
+**Diseño completo en [plan-observabilidad.md](plan-observabilidad.md).** Resumen:
+
+- El dashboard **ya tiene** almacén de métricas, motor de alertas con anti-flapping y notificaciones con dedup y horarios de silencio. Falta solo la **telemetría a nivel de aplicación** que las alimente.
+- Dos costuras evitan tocar 800 archivos: `CargandoDialogService` (ya envuelve las 804 llamadas con un `requestId` y un timer — mide lo que el usuario *siente*) y un `ApolloLink` nuevo (mide red + servidor, y sabe si fue al filial o al central). **La diferencia entre ambas es el diagnóstico.**
+- Del lado servidor, la `Instrumentation` de graphql-java da timing **por campo**: convierte los N+1 de hipótesis en dato atribuido al resolver exacto.
+- Detectores específicos de este sistema: loading colgado (los 7 Observables que hoy no dejan rastro), N+1 por request, pausa de GC (C1), lag de replicación y slots inactivos (C2/C3), impresión lenta, y degradación relativa contra la mediana de 7 días.
+- Alertas: solo agregar `kind` nuevos a `alertRuleConfig`. **Cero código de alertas nuevo.**
+
 ### Fase 3 — Estructural, ya con números
 
 21. **Revisar `REPLICA IDENTITY FULL`**: donde la tabla tiene PK estable, `DEFAULT` alcanza y es mucho más barato (§6.1).
