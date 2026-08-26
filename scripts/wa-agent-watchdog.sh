@@ -34,10 +34,17 @@ if [ -z "${pid:-}" ]; then
 fi
 echo "wa-agent: pid $pid"
 
+# Aviso de escritorio: cuando el caído es el servidor no se puede avisar por
+# WhatsApp (es justo lo que no anda), y corriendo desde launchd nadie mira stderr.
+avisar_escritorio() {
+  osascript -e "display notification \"$1\" with title \"FRC · canal de WhatsApp\"" >/dev/null 2>&1 || true
+}
+
 # ¿El problema es el servidor y no el demonio? (la confusión del 2026-08-25)
 if ! "$HOME/.claude/bin/wa-health" >/dev/null 2>&1; then
   echo "DIAGNÓSTICO: el socket de Evolution está caído — el demonio no es el problema." >&2
   echo "             reparar allá:  wa-health --reparar" >&2
+  avisar_escritorio "Socket de Evolution caído: no se puede enviar. Reparar con wa-health --reparar"
   exit 2
 fi
 

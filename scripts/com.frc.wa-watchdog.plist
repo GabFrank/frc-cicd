@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.frc.wa-watchdog</string>
+
+  <!-- Vigila com.frc.wa-agent: lo reinicia si quedo vivo-pero-colgado, modo de
+       falla que su KeepAlive no detecta porque el proceso nunca muere.
+       Si el caido es el socket de Evolution (servidor), NO toca el demonio:
+       avisa por notificacion de escritorio y sale con codigo 2. -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/gabfranck/.claude/bin/wa-agent-watchdog</string>
+    <string>--reparar</string>
+  </array>
+
+  <!-- Periodico, no demonio: sin KeepAlive. Cada 10 min.
+       Cada corrida muestrea hasta 60 s de red, asi que no bajar de ~5 min. -->
+  <key>StartInterval</key>
+  <integer>600</integer>
+  <key>RunAtLoad</key>
+  <true/>
+
+  <!-- Corre fuera de una shell de login: PATH explicito.
+       Necesita curl (wa-health), lsof y launchctl. No usa ssh. -->
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/Users/gabfranck/.local/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>HOME</key>
+    <string>/Users/gabfranck</string>
+  </dict>
+
+  <key>StandardOutPath</key>
+  <string>/Users/gabfranck/.claude/logs/wa-watchdog.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/gabfranck/.claude/logs/wa-watchdog.log</string>
+
+  <key>ThrottleInterval</key>
+  <integer>60</integer>
+</dict>
+</plist>
