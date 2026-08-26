@@ -880,3 +880,58 @@ correr antes de pushear puede fallar en silencio. Correrlo así hasta que se arr
 ```bash
 NODE_OPTIONS=--max_old_space_size=8192 npx ng build --configuration production --no-progress
 ```
+
+## Evolution API: `connectionState: open` NO prueba que se pueda enviar (2026-08-25)
+
+**Qué pasó.** El bot de WhatsApp dejó de contestar y el cierre de caja de `frc-gourmet` falló
+con `Evolution API error (500): Internal Server Error` en cada imagen. El resumen de la
+medianoche anterior sí había llegado. Todos los chequeos superficiales daban sano:
+
+```
+GET /instance/connectionState/FRC   → {"state":"open"}
+GET /instance/fetchInstances        → connectionStatus: open, perfil correcto
+curl https://wa.francoarevalos.com  → HTTP 200
+docker ps                           → evolution-api Up
+```
+
+**Por qué.** El WebSocket de Baileys con WhatsApp estaba cerrado desde las 08:17, pero
+`connectionState` **sale del Postgres de Evolution, no del socket real**. Leer sigue andando
+(`wa-read` lee el histórico de la base); enviar no, porque necesita el socket vivo. Evolution
+**no reintenta reconectar solo**: el contenedor llevaba 4 días arriba sin reinicios y el socket
+nunca volvió.
+
+Esto **extiende** el gotcha ya conocido de `wa-read` anda / `wa-send` no: ahí la causa era la
+instancia desvinculada; acá la instancia está vinculada y el estado dice `open` igual. O sea,
+**ni leer ni `connectionState` prueban que se pueda enviar. La única prueba es enviar.**
+
+**Cómo reconocerlo.** En `docker logs evolution-api`:
+
+```
+ERROR [ChannelStartupService]
+Error: Connection Closed
+    at sendRawMessage (.../baileys/lib/Socket/socket.js:50:19)
+      error: 'Precondition Required',
+```
+
+Los errores salen **en pares** cuando el cliente manda dos adjuntos — un `Connection Closed`
+por cada envío. Útil para correlacionar con el "Imagen 1 / Imagen 2" del mensaje de error.
+
+**Cómo se arregla.** El `POST /instance/restart/{instance}` **no alcanza** — devuelve
+`state: open` y el socket sigue muerto (`PUT` ni existe: da 404). Hay que reiniciar el proceso:
+
+```bash
+ssh deploy@178.105.107.171 'docker restart evolution-api'
+# esperar ~20s, y verificar ENVIANDO, no leyendo:
+~/.claude/bin/wa-send "prueba"
+```
+
+Reconecta desde las credenciales guardadas en el Postgres de Evolution: **no pidió QR**. Tener
+el teléfono a mano igual, por si la sesión estuviera invalidada.
+
+> Al 2026-08-25 el contenedor hospeda **una sola instancia** (`FRC`), así que reiniciarlo no
+> afecta otros proyectos — verificar con `fetchInstances` antes, porque está pensado como
+> multi-proyecto.
+
+**Corolario para el `wa-agent` local.** Sus timeouts (`read operation timed out`,
+`urlopen error`) durante los días previos eran **síntoma de esto**, no un problema de la Mac.
+Antes de reiniciar el demonio, descartar que el socket del servidor esté caído.
