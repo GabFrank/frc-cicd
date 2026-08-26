@@ -159,6 +159,21 @@ Ver [runbooks/sudoers-patterns.md](runbooks/sudoers-patterns.md) para procedimie
 
 **Diagnóstico rápido JVM:** `java` del servicio + one-liner `ZoneRulesProvider.getVersions("America/Asuncion").lastKey()` → si < 2025a, está viejo.
 
+**Procedimiento aplicado en central (2026-08-21, sirve de plantilla para las 14 filiales):**
+- En Fedora **todos** los JDK instalados (11 y 17, JRE y fastdebug incluidos) symlinkean su `lib/tzdb.dat` a **`/usr/share/javazi-1.8/tzdb.dat`**. El `1.8` es solo el nombre legado del paquete `tzdata-java`, **no** significa Java 8: reemplazar ese único archivo cubre todas las JVM del host de una sola vez.
+- Verificar formato antes de copiar: los primeros bytes deben ser `TZDB` y luego la versión en ASCII (`head -c 20 archivo | od -c -An`). Así se lee la versión sin `strings`, que **no está instalado** en central.
+- El `cp` es **seguro en caliente y no requiere ventana**: la JVM lee `tzdb.dat` una sola vez al cargar `ZoneRulesProvider` en el arranque. Se puede aplicar en horario de atención y dejar solo el restart para la noche — útil cuando el que tiene sudo no está disponible a esa hora.
+- Copiar con `install -o root -g root -m 0644` + `restorecon` para no perder el contexto SELinux (`usr_t`), y respaldar el original a `/root/tzdb.dat.bak-<fecha>` — el rollback es copiar de vuelta y reiniciar.
+- Validar **antes** del restart compilando un `TzCheck.java` de dos líneas con el `java` del servicio: una JVM nueva ya toma el archivo nuevo. Chequear el offset de hoy **y** el de un enero futuro (si el de enero da `-03:00`, el DST está realmente abolido en ese tzdb).
+- **El archivo pertenece al RPM `tzdata-java`.** Un `dnf update tzdata-java` lo pisa y revierte el fix en silencio. Si el host llega a actualizarse, revalidar.
+- **Sí hay medición directa del offset del proceso vivo, y está en el journal.** Cada línea tiene *dos* timestamps: el prefijo que pone journald (reloj del **OS**) y, en las líneas INFO de Spring Boot, el que escribe la **app** con su propia zona. Comparar los dos prueba el offset sin reiniciar ni exponer un endpoint:
+  ```bash
+  journalctl -u frc-bodega --since "3 min ago" --no-pager -q \
+    | grep -oE '20[0-9]{2}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}' | tail -3
+  date
+  ```
+  Verificado 2026-08-21: con tzdb viejo la app marcaba `22:05:22` con el OS en `23:07:36` (1 h exacta atrás); tras el restart, `23:07:19` contra `23:07:36`. Sirve como prueba antes **y** después. Ojo: las líneas de acceso tipo `Successfully Authentication` no llevan timestamp propio — hay que buscar las INFO del framework.
+
 ### Subnet-router tailscale/headscale no forwardea: falta `tailscale0` en zona firewalld
 **Qué pasa (2026-07-09, montando el bridge headscale VM Hetzner → flota `172.25.*`):** subnet-router mauro anuncia `172.25.0.0/16`, ruta aprobada en headscale, `ip_forward=1`, la VM tiene la ruta en kernel (`ip route get 172.25.1.200 → dev tailscale0`), y aun así **100% packet loss**. mauro alcanza `172.25.1.200:8082` perfecto por sí mismo, pero no reenvía el tráfico de la VM.
 
@@ -865,3 +880,58 @@ correr antes de pushear puede fallar en silencio. Correrlo así hasta que se arr
 ```bash
 NODE_OPTIONS=--max_old_space_size=8192 npx ng build --configuration production --no-progress
 ```
+
+## Evolution API: `connectionState: open` NO prueba que se pueda enviar (2026-08-25)
+
+**Qué pasó.** El bot de WhatsApp dejó de contestar y el cierre de caja de `frc-gourmet` falló
+con `Evolution API error (500): Internal Server Error` en cada imagen. El resumen de la
+medianoche anterior sí había llegado. Todos los chequeos superficiales daban sano:
+
+```
+GET /instance/connectionState/FRC   → {"state":"open"}
+GET /instance/fetchInstances        → connectionStatus: open, perfil correcto
+curl https://wa.francoarevalos.com  → HTTP 200
+docker ps                           → evolution-api Up
+```
+
+**Por qué.** El WebSocket de Baileys con WhatsApp estaba cerrado desde las 08:17, pero
+`connectionState` **sale del Postgres de Evolution, no del socket real**. Leer sigue andando
+(`wa-read` lee el histórico de la base); enviar no, porque necesita el socket vivo. Evolution
+**no reintenta reconectar solo**: el contenedor llevaba 4 días arriba sin reinicios y el socket
+nunca volvió.
+
+Esto **extiende** el gotcha ya conocido de `wa-read` anda / `wa-send` no: ahí la causa era la
+instancia desvinculada; acá la instancia está vinculada y el estado dice `open` igual. O sea,
+**ni leer ni `connectionState` prueban que se pueda enviar. La única prueba es enviar.**
+
+**Cómo reconocerlo.** En `docker logs evolution-api`:
+
+```
+ERROR [ChannelStartupService]
+Error: Connection Closed
+    at sendRawMessage (.../baileys/lib/Socket/socket.js:50:19)
+      error: 'Precondition Required',
+```
+
+Los errores salen **en pares** cuando el cliente manda dos adjuntos — un `Connection Closed`
+por cada envío. Útil para correlacionar con el "Imagen 1 / Imagen 2" del mensaje de error.
+
+**Cómo se arregla.** El `POST /instance/restart/{instance}` **no alcanza** — devuelve
+`state: open` y el socket sigue muerto (`PUT` ni existe: da 404). Hay que reiniciar el proceso:
+
+```bash
+ssh deploy@178.105.107.171 'docker restart evolution-api'
+# esperar ~20s, y verificar ENVIANDO, no leyendo:
+~/.claude/bin/wa-send "prueba"
+```
+
+Reconecta desde las credenciales guardadas en el Postgres de Evolution: **no pidió QR**. Tener
+el teléfono a mano igual, por si la sesión estuviera invalidada.
+
+> Al 2026-08-25 el contenedor hospeda **una sola instancia** (`FRC`), así que reiniciarlo no
+> afecta otros proyectos — verificar con `fetchInstances` antes, porque está pensado como
+> multi-proyecto.
+
+**Corolario para el `wa-agent` local.** Sus timeouts (`read operation timed out`,
+`urlopen error`) durante los días previos eran **síntoma de esto**, no un problema de la Mac.
+Antes de reiniciar el demonio, descartar que el socket del servidor esté caído.

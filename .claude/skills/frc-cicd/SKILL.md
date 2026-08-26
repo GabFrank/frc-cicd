@@ -35,6 +35,7 @@ Esta skill concentra lo que aprendí operando el sistema FRC Sistemas Informáti
 | Sudoers NOPASSWD — patrones y fixes | [runbooks/sudoers-patterns.md](runbooks/sudoers-patterns.md) |
 | Override `sucursalId` vía application.properties | [runbooks/application-properties-overlay.md](runbooks/application-properties-overlay.md) |
 | Replicación PostgreSQL (schedulers, pub/sub) | [runbooks/replication.md](runbooks/replication.md) |
+| **Chequeo de salud de las réplicas (ejecutable, solo lectura)** | skill **`replica-monitor`** |
 | Scripts de escaneo solo-lectura (auditoría pre/post migración) | [runbooks/scans.md](runbooks/scans.md) |
 | Dry-run de migración (validar JAR nuevo contra DB prod) | [runbooks/dry-run-migration.md](runbooks/dry-run-migration.md) |
 | Statusline de Claude Code (repo + branch, ctx, rate limit) | [runbooks/claude-code-statusline.md](runbooks/claude-code-statusline.md) |
