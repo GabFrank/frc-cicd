@@ -46,7 +46,7 @@ Stack: Angular 15 + Electron 22 + Apollo Client (GraphQL). Windows + Linux insta
 
 Path local: `/Users/gabfranck/workspace/frc-sistemas-informaticos/frc-comercial/mobile/`
 
-Stack: Angular 15 + Ionic 6 + Capacitor 5. Android-only. Package `com.sistemasinformaticos.frc`.
+Stack: Angular 15 + Ionic 6 + **Capacitor 7**. Android-only. Package `com.sistemasinformaticos.frc`.
 
 **Deploy:** solo Play Store (no OTA). Ver [mobile-channels.md](mobile-channels.md) para el modelo de 3 tracks.
 
@@ -56,7 +56,7 @@ Workflow `Deploy to Play Store` (`workflow_dispatch`, input `track: internal|alp
 
 Path local: `/Users/gabfranck/workspace/frc-sistemas-informaticos/frc-comercial/mobile-pwa/`
 
-**Repo privado.** Stack: Angular 21 standalone zoneless + Material 21 + Apollo 4. Sin Ionic, sin Capacitor: web puro. Node 20.20. Dev server en **4300**.
+**Repo público** (verificado 2026-09-02 con `gh repo view`; este documento decía «privado», y el comentario de su `ci.yml` todavía lo dice). Stack: Angular 21 standalone zoneless + Material 21 + Apollo 4. Sin Ionic, sin Capacitor: web puro. Node 20.20. Dev server en **4300**.
 
 **Por qué existe:** reemplaza la APK de Capacitor. Motivos: **soporte de iOS** (lo que la APK no daba), actualización sin Play Store, y que solo el 3,5% del código tocaba APIs nativas.
 
@@ -96,9 +96,9 @@ Contenido:
 
 ### Jira Auto-Agent
 
-Los 4 repos tienen `jira-receiver.yml` en `.github/workflows/` que recibe dispatches de Jira y crea GitHub Issues. Claude Code Routines (cloud, plan Max) se disparan automaticamente al detectar issues con label `jira-auto`. Ver [jira-auto-agent.md](jira-auto-agent.md) para detalle completo del flujo.
+Los 4 repos originales tienen `jira-receiver.yml` en `.github/workflows/` que recibe dispatches de Jira y crea GitHub Issues. Claude Code Routines (cloud, plan Max) se disparan automaticamente al detectar issues con label `jira-auto`. Ver [jira-auto-agent.md](jira-auto-agent.md) para detalle completo del flujo.
 
-## Convenciones comunes a los 4 repos del producto
+## Convenciones comunes a los 5 repos del producto
 
 **Branches:**
 ```
@@ -106,7 +106,7 @@ feature/* --PR--> develop (alpha) --PR--> release/beta (beta) --PR--> master (st
 hotfix/*  --PR--> master --> PR obligatorio a develop
 ```
 
-**`.releaserc.json`** idéntico en los 4 repos (con variantes menores):
+**`.releaserc.json`** idéntico en los 5 repos (con variantes menores):
 ```json
 {
   "branches": [
@@ -127,7 +127,7 @@ hotfix/*  --PR--> master --> PR obligatorio a develop
 
 **Flyway (central + filial):** todas las migraciones son aditivas. Nunca `DROP`/`RENAME` sin estrategia de 2 versiones (una que deja dualidad, otra que limpia).
 
-**Lo que NUNCA hacer** (vale para los 4 repos):
+**Lo que NUNCA hacer** (vale para los 5 repos):
 1. Push directo a `master`, `release/beta`, `develop` — siempre PR.
 2. `git push --force` a ramas compartidas.
 3. Modificar migraciones Flyway ya aplicadas.

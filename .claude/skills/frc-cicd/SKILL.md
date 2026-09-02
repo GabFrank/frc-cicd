@@ -1,6 +1,6 @@
 ---
 name: frc-cicd
-description: Conocimiento operativo del ecosistema FRC Sistemas Informáticos — CI/CD de los 4 repos del SaaS Franco Systems (central, filial, desktop, mobile), inventario de hosts on-prem, dashboard de monitoreo, runbooks reutilizables y gotchas aprendidos en producción. Invocá esta skill cuando la tarea toque cualquier host FRC, release, deploy, filial/central, dashboard, o selección de canal mobile.
+description: Conocimiento operativo del ecosistema FRC Sistemas Informáticos — CI/CD de los 5 repos del SaaS Franco Systems (central, filial, desktop, mobile, mobile-pwa), inventario de hosts on-prem, dashboard de monitoreo, runbooks reutilizables y gotchas aprendidos en producción. Invocá esta skill cuando la tarea toque cualquier host FRC, release, deploy, filial/central, dashboard, o selección de canal mobile.
 ---
 
 # FRC CI/CD — skill del operador
@@ -23,7 +23,7 @@ Esta skill concentra lo que aprendí operando el sistema FRC Sistemas Informáti
 |---|---|
 | ¿Qué IPs/hosts existen y cómo entro? | [hosts.md](hosts.md) |
 | **VPN headscale/tailscale — server, enrolar/remover nodos, ACL, rollout por filial** | [runbooks/headscale.md](runbooks/headscale.md) |
-| ¿Cómo funcionan los 4 repos + frc-cicd? | [repos.md](repos.md) |
+| ¿Cómo funcionan los 5 repos del producto + frc-cicd? | [repos.md](repos.md) |
 | Jira Auto-Agent (resolución automatizada de issues) | [jira-auto-agent.md](jira-auto-agent.md) |
 | Canal selector mobile + Play Store tracks | [mobile-channels.md](mobile-channels.md) |
 | SSH al dashboard, sqlite, alertas WhatsApp | [dashboard-ops.md](dashboard-ops.md) |
@@ -39,12 +39,13 @@ Esta skill concentra lo que aprendí operando el sistema FRC Sistemas Informáti
 | Scripts de escaneo solo-lectura (auditoría pre/post migración) | [runbooks/scans.md](runbooks/scans.md) |
 | Dry-run de migración (validar JAR nuevo contra DB prod) | [runbooks/dry-run-migration.md](runbooks/dry-run-migration.md) |
 | Statusline de Claude Code (repo + branch, ctx, rate limit) | [runbooks/claude-code-statusline.md](runbooks/claude-code-statusline.md) |
+| **Ciclo de implementación de una feature/fix (12 pasos, matriz por repo, ejes de auditoría)** | `frc-cicd/ciclo-implementacion-frc-comercial.md` en el repo |
 
 ## Convenciones transversales del proyecto
 
-- **⚠️ «beta» ES la red de farmacia, y es producción.** No hay canal beta de laboratorio. Los canales reales son **`alpha`** (laboratorio en mauro), **`farmacia`** (serie beta: central `:8082` + sus 6 filiales + cajas) y **`bodega`** (serie stable: central `:8081` + 17 filiales). Promover a `release/beta` publica a una farmacia que factura. Y **cliente y backend van juntos por canal**: si el central de farmacia corre beta, su desktop y su PWA corren beta. Las puertas de Cloudflare siguen ese mapa (`farmacia.*` → proyecto beta desde 2026-08-20); `beta.*` es ensayo interno, no un canal del producto.
+- **⚠️ «beta» ES la red de farmacia, y es producción.** No hay canal beta de laboratorio. Los canales reales son **`alpha`** (laboratorio en mauro), **`farmacia`** (serie beta: central `:8082` + sus 6 filiales + cajas) y **`bodega`** (serie stable: central `:8081` + **18 filiales**). Promover a `release/beta` publica a una farmacia que factura. Y **cliente y backend van juntos por canal**: si el central de farmacia corre beta, su desktop y su PWA corren beta. Las puertas de Cloudflare siguen ese mapa (`farmacia.*` → proyecto beta desde 2026-08-20); `beta.*` es ensayo interno, no un canal del producto.
 - **Idioma del dominio:** español (entidades, columnas, logs de producto, UI). Identificadores de código en inglés, commits en inglés con prefijos convencionales.
-- **Branches en los 4 repos:** `master` (no `main`) + `release/beta` (long-lived, no `release/x.y.z`) + `develop`. Todas protegidas con `enforce_admins=true`.
+- **Branches en los 5 repos:** `master` (no `main`) + `release/beta` (long-lived, no `release/x.y.z`) + `develop`. Protegidas con `enforce_admins=true` y **0 reviews requeridas** — el único gate obligatorio es el check `build`. **Dos excepciones verificadas el 2026-09-02:** el default branch de `frc-mobile` es **`develop`**, no `master` (importa: un `workflow_dispatch` solo aparece si vive en la rama por defecto), y **`release/beta` de `frc-mobile-pwa` NO está protegida**.
 - **Merge strategy:** `release/beta → master` con **merge commit**, NO squash. Squash rompe cálculos de semantic-release. En los otros PRs cualquier estrategia razonable sirve pero por defecto **merge commit**.
 - **Hotfix sale de `master`**, no de `develop`. Después del merge, PR obligatorio `master → develop`.
 - **Commits:** `feat:` → minor, `fix:` → patch, `feat!:` → major. `chore:` / `refactor:` / `ci:` / `docs:` / `test:` / `perf:` no liberan.
