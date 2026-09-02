@@ -62,8 +62,12 @@ gh workflow run "Deploy to Play Store" --ref release/beta -f version=1.1.0-beta.
 ## Gotcha específico — `ng test` y `ng lint` rotos
 
 El repo mobile tiene roto:
-- `ng test` → fallido por `edit-transferenci-producto.component.spec.ts` con typo en el import (TS2724).
-- `ng lint` → `@angular-eslint/builder:lint not found`.
+- `ng lint` → `@angular-eslint/builder:lint not found`. **Confirmado el 2026-09-02**: `angular.json`
+  declara ese builder y `@angular-eslint` no está ni en `devDependencies` ni instalado.
+- `ng test` → **el typo del import ya no existe** (revisado 2026-09-02: el archivo
+  `edit-transferenci-producto.component.spec.ts` y la clase `EditTransferenciaProductoComponent`
+  coinciden, el import resuelve). Si `ng test` falla hoy, es por otra causa: diagnosticar, no
+  asumir este TS2724.
 
 Son pre-existentes, no bloquean el build AOT de producción (`npm run build` sí pasa).
 
