@@ -32,6 +32,7 @@ Consecuencias prácticas:
 | Métricas / gRPC | `127.0.0.1:9090` / `127.0.0.1:50443` |
 | MagicDNS | **on**, `base_domain: hs.farmacia` → los nodos resuelven por nombre (`central.hs.farmacia`) |
 | Rango tailnet | `100.64.0.0/10` (IPv4) + `fd7a:115c:a1e0::/48` (IPv6) |
+| **Inventario y expiraciones** | **[headscale-inventory.md](headscale-inventory.md)** — nodos, preauth keys, monitoreo de expiraciones, runbook de rotación |
 
 > **Nunca `docker exec headscale ...`.** Ese comando circula en pedidos de otros devs y no aplica acá. Siempre `sudo headscale` directo.
 
@@ -370,7 +371,11 @@ Mientras conviven los dos caminos, **una filial puede ser alcanzable por dos IPs
 
 ---
 
-## Inventario de nodos (verificado 2026-08-11 — **siempre re-verificar en vivo**)
+## Inventario de nodos
+
+> ⚠️ **Inventario detallado movido a [headscale-inventory.md](headscale-inventory.md)** — incluye snapshot actualizado de nodos y preauth keys, monitoreo de expiraciones, y runbook completo de rotación de secretos.
+
+**Snapshot rápido (verificado 2026-08-11):**
 
 | ID | Nombre | IP tailnet | Tag | Qué es |
 |---|---|---|---|---|

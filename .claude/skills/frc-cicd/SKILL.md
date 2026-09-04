@@ -23,6 +23,7 @@ Esta skill concentra lo que aprendí operando el sistema FRC Sistemas Informáti
 |---|---|
 | ¿Qué IPs/hosts existen y cómo entro? | [hosts.md](hosts.md) |
 | **VPN headscale/tailscale — server, enrolar/remover nodos, ACL, rollout por filial** | [runbooks/headscale.md](runbooks/headscale.md) |
+| **Inventario de nodos y preauth keys Headscale — monitoreo de expiraciones, rotación de secretos** | [runbooks/headscale-inventory.md](runbooks/headscale-inventory.md) |
 | ¿Cómo funcionan los 4 repos + frc-cicd? | [repos.md](repos.md) |
 | Jira Auto-Agent (resolución automatizada de issues) | [jira-auto-agent.md](jira-auto-agent.md) |
 | Canal selector mobile + Play Store tracks | [mobile-channels.md](mobile-channels.md) |
